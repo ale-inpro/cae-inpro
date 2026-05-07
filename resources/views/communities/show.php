@@ -8,6 +8,7 @@ $isAdmin = (($area ?? 'gestor') === 'admin');
 $available = $availableTechnicians ?? [];
 $currentUrl = $ab . '/comunidades/' . (int) ($c['id'] ?? 0) . '#c-info';
 $editUrl = $ab . '/comunidades/' . (int) ($c['id'] ?? 0) . '/edit?return_to=' . urlencode($currentUrl);
+$pendingRlRequests = $pendingRlRequests ?? [];
 
 $riskLabel = static function (string $status): string {
     return match ($status) {
@@ -281,6 +282,41 @@ $caeBadge = static function (string $status): string {
 
             <div class="subpanel-b small">
                 <?php if ($isAdmin): ?>
+                    <?php if (!empty($pendingRlRequests)): ?>
+                        <section class="rl-card mb-3" style="border-left: 3px solid var(--bs-warning);">
+                            <h4 class="rl-card-title d-flex align-items-center gap-2">
+                                <i class="bi bi-bell-fill text-warning"></i>
+                                Solicitudes pendientes del gestor
+                                <span class="badge text-bg-warning ms-1"><?= count($pendingRlRequests) ?></span>
+                            </h4>
+                            <p class="rl-card-sub mb-3">El gestor de esta comunidad ha solicitado este informe. Puedes rechazar la solicitud o atenderla subiendo el informe.</p>
+                            <ul class="list-unstyled mb-0">
+                                <?php foreach ($pendingRlRequests as $req): ?>
+                                    <li class="d-flex align-items-start justify-content-between gap-3 py-2 border-bottom">
+                                        <div>
+                                            <div class="fw-semibold small"><?= htmlspecialchars((string) ($req['requester_name'] ?? '—')) ?></div>
+                                            <div class="text-muted small"><?= htmlspecialchars((string) ($req['requester_email'] ?? '')) ?></div>
+                                            <?php if (!empty($req['request_notes'])): ?>
+                                                <div class="text-muted small fst-italic mt-1">"<?= htmlspecialchars((string) $req['request_notes']) ?>"</div>
+                                            <?php endif; ?>
+                                            <div class="text-muted" style="font-size:0.7rem;">
+                                                <?= date('d/m/Y H:i', strtotime((string) $req['requested_at'])) ?>
+                                                &nbsp;·&nbsp;
+                                                <?php $reqStatusLabel = match((string)$req['status']) { 'requested' => 'Pendiente', 'in_progress' => 'En proceso', default => ucfirst((string)$req['status']) }; ?>
+                                                <span class="badge text-bg-secondary"><?= $reqStatusLabel ?></span>
+                                            </div>
+                                        </div>
+                                        <form method="post" action="<?= $ab ?>/comunidades/<?= (int) ($c['id'] ?? 0) ?>/riesgos/requests/<?= (int) $req['id'] ?>/reject" data-confirm="¿Rechazar esta solicitud? El gestor será notificado.">
+                                            <button class="btn btn-sm btn-outline-danger" type="submit">
+                                                <i class="bi bi-x-circle me-1"></i> Rechazar
+                                            </button>
+                                        </form>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </section>
+                    <?php endif; ?>
+                    
                     <div class="rl-admin-grid mb-3">
                         <section class="rl-card">
                             <h4 class="rl-card-title">Subir o reemplazar informe</h4>
@@ -318,6 +354,22 @@ $caeBadge = static function (string $status): string {
                             </form>
                         </section>
                     </div>
+                <?php endif; ?>
+
+                <?php if (!$isAdmin): ?>
+                    <!-- Formulario de solicitud de informe RL (solo gestor) -->
+                    <section class="rl-empty-state mb-3">
+                        <p class="mb-1 fw-semibold">Solicitar informe de riesgos laborales</p>
+                        <p class="mb-3 text-muted small">Si necesitas el informe RL de esta comunidad, puedes solicitárselo directamente al administrador.</p>
+                        <form method="post" action="<?= $ab ?>/comunidades/<?= (int) ($c['id'] ?? 0) ?>/riesgos/request">
+                            <div class="mb-2">
+                                <textarea name="request_notes" class="form-control form-control-sm" rows="2" placeholder="Notas para el administrador (opcional)"></textarea>
+                            </div>
+                            <button class="btn btn-warning btn-sm" type="submit">
+                                <i class="bi bi-send me-1"></i> Solicitar informe RL al admin
+                            </button>
+                        </form>
+                    </section>
                 <?php endif; ?>
 
                 <?php if ($risk): ?>
@@ -360,10 +412,10 @@ $caeBadge = static function (string $status): string {
                             </div>
                         <?php endif; ?>
                     </section>
-                <?php else: ?>
+                <?php elseif ($isAdmin): ?>
                     <section class="rl-empty-state">
                         <p class="mb-1 fw-semibold">No hay informe RL cargado</p>
-                        <p class="mb-0 text-muted">Cuando el administrador suba un archivo, aparecera aqui con acciones de visualizacion y descarga.</p>
+                        <p class="mb-0 text-muted">Cuando subas un archivo, aparecerá aquí con acciones de visualización y descarga.</p>
                     </section>
                 <?php endif; ?>
             </div>

@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Core\Controller;
 use App\Core\Database;
 use PDO;
+use App\Services\Mailer;
 
 final class CaeController extends Controller
 {
@@ -33,7 +34,7 @@ final class CaeController extends Controller
         $pdo = Database::connection();
 
         $stmt = $pdo->prepare("
-            SELECT id, first_name, last_name, professions, city
+            SELECT id, first_name, last_name, professions, city, email
             FROM technicians
             WHERE id = :id
             AND is_active = TRUE
@@ -83,6 +84,34 @@ final class CaeController extends Controller
             $currentCaeDoc = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
         }
 
+        $requestableDocTypes = [];
+        $stmt = $pdo->query("
+            SELECT id, name
+            FROM document_types
+            WHERE scope = 'technician_cae'
+              AND is_active = TRUE
+              AND is_cae_file_type = FALSE
+            ORDER BY name
+        ");
+        $requestableDocTypes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $stmt = $pdo->prepare("
+            SELECT
+                r.id,
+                r.documents_requested_json,
+                r.custom_message,
+                r.status,
+                r.sent_at,
+                u.full_name AS requested_by_name
+            FROM cae_document_requests r
+            LEFT JOIN users u ON u.id = r.requested_by_user_id
+            WHERE r.technician_id = :tid
+            ORDER BY r.created_at DESC
+            LIMIT 10
+        ");
+        $stmt->execute(['tid' => $technicianId]);
+        $caeDocRequests = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
         $this->render('cae.history', [
             'title' => 'Nueva revisión CAE',
             'baseUrl' => $this->baseUrl(),
@@ -91,161 +120,320 @@ final class CaeController extends Controller
             'currentCae' => $currentCae,
             'isCurrentValid' => $isCurrentValid,
             'currentCaeDoc' => $currentCaeDoc,
+            'requestableDocTypes' => $requestableDocTypes,
+            'caeDocRequests' => $caeDocRequests,
         ]);
     }
 
     /** @param array<string, string> $params */
-public function store(array $params = []): void
-{
-    $this->assertAreaAccess();
-    $this->requireAdmin();
+    public function requestDocuments(array $params = []): void
+    {
+        $this->assertAreaAccess();
+        $this->requireAdmin();
 
-    $technicianId = (int) ($params['id'] ?? 0);
-    $status = trim((string) ($_POST['status'] ?? 'pending_docs'));
-    $validFrom = trim((string) ($_POST['valid_from'] ?? ''));
-    $validUntil = trim((string) ($_POST['valid_until'] ?? ''));
-    $notes = trim((string) ($_POST['notes'] ?? ''));
+        $technicianId = (int) ($params['id'] ?? 0);
+        $returnTo = $this->areaBaseUrl() . '/tecnicos/' . $technicianId . '/cae';
 
-    $defaultReturn = $this->areaBaseUrl() . '/tecnicos/' . $technicianId . '/cae';
-    $returnTo = trim((string) ($_POST['return_to'] ?? $defaultReturn));
+        if ($technicianId <= 0) {
+            $this->flash('Técnico no válido.', 'danger', 'Error');
+            header('Location: ' . $this->areaBaseUrl() . '/tecnicos');
+            exit;
+        }
 
-    if ($technicianId <= 0) {
-        $this->flash('Técnico no válido.', 'danger', 'Error');
-        header('Location: ' . $this->areaBaseUrl() . '/tecnicos');
-        exit;
-    }
+        /** @var array<int, string> $docTypeIds */
+        $docTypeIds = array_map('strval', (array) ($_POST['document_type_ids'] ?? []));
+        $docTypeIds = array_values(array_filter($docTypeIds, static fn(string $v): bool => ctype_digit($v) && (int) $v > 0));
 
-    $pdo = Database::connection();
+        $customMessage = trim((string) ($_POST['custom_message'] ?? ''));
 
-    $stmt = $pdo->prepare("SELECT id FROM technicians WHERE id = :id AND is_active = TRUE LIMIT 1");
-    $stmt->execute(['id' => $technicianId]);
-    if (!(int) $stmt->fetchColumn()) {
-        $this->flash('Técnico no encontrado.', 'danger', 'Error');
-        header('Location: ' . $this->areaBaseUrl() . '/tecnicos');
-        exit;
-    }
+        if ($docTypeIds === []) {
+            $this->flash('Selecciona al menos un documento para solicitar.', 'warning', 'Aviso');
+            header('Location: ' . $returnTo);
+            exit;
+        }
 
-    $stmt = $pdo->prepare("
-        SELECT id, valid_from, valid_until, status::text AS status, notes
-        FROM cae_records
-        WHERE technician_id = :tid
-          AND is_current = TRUE
-        LIMIT 1
-    ");
-    $stmt->execute(['tid' => $technicianId]);
-    $current = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        $pdo = Database::connection();
 
-    $today = date('Y-m-d');
-    $currentValid = $current && !empty($current['valid_until']) && ((string) $current['valid_until'] >= $today);
-
-    // Si no llegan fechas, usamos valores por defecto (hoy + 3 meses)
-    if ($validFrom === '') {
-        $validFrom = $today;
-    }
-    if ($validUntil === '') {
-        $validUntil = date('Y-m-d', strtotime($validFrom . ' +3 months'));
-    }
-
-    if ($validFrom > $validUntil) {
-        $this->flash('La fecha "válido desde" no puede ser mayor que "válido hasta".', 'warning', 'Aviso');
-        header('Location: ' . $returnTo);
-        exit;
-    }
-
-    // Comprueba si el CAE actual tiene archivo principal
-    $hasMainFile = false;
-    if ($current) {
+        // Técnico
         $stmt = $pdo->prepare("
-            SELECT 1
-            FROM cae_documents
-            WHERE cae_record_id = :cae
-              AND is_active = TRUE
-              AND is_cae_file = TRUE
+            SELECT id, first_name, last_name, email
+            FROM technicians
+            WHERE id = :id AND is_active = TRUE
             LIMIT 1
         ");
-        $stmt->execute(['cae' => (int) $current['id']]);
-        $hasMainFile = (bool) $stmt->fetchColumn();
-    }
+        $stmt->execute(['id' => $technicianId]);
+        $tech = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    // Regla de negocio de estados según archivo principal
-    $allowedStatuses = $hasMainFile
-        ? ['pending_docs', 'in_review', 'approved', 'rejected', 'expired']
-        : ['pending_docs', 'in_review'];
+        if (!$tech) {
+            $this->flash('Técnico no encontrado.', 'danger', 'Error');
+            header('Location: ' . $this->areaBaseUrl() . '/tecnicos');
+            exit;
+        }
 
-    if (!in_array($status, $allowedStatuses, true)) {
-        $this->flash(
-            $hasMainFile
-                ? 'Estado de CAE no válido.'
-                : 'Sin archivo CAE principal solo se permite Pendiente o En revisión.',
-            'warning',
-            'Aviso'
-        );
+        $techEmail = trim((string) ($tech['email'] ?? ''));
+        if ($techEmail === '') {
+            $this->flash('El técnico no tiene email configurado.', 'warning', 'Aviso');
+            header('Location: ' . $returnTo);
+            exit;
+        }
+
+        // Tipos de doc válidos
+        $in = implode(',', array_fill(0, count($docTypeIds), '?'));
+        $sql = "
+            SELECT id, name
+            FROM document_types
+            WHERE id IN ($in)
+                AND scope = 'technician_cae'
+                AND is_active = TRUE
+                AND is_cae_file_type = FALSE
+            ORDER BY name
+        ";
+        $stmt = $pdo->prepare($sql);
+        foreach ($docTypeIds as $k => $id) {
+            $stmt->bindValue($k + 1, (int) $id, PDO::PARAM_INT);
+        }
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if ($rows === []) {
+            $this->flash('No se encontraron tipos de documento válidos.', 'warning', 'Aviso');
+            header('Location: ' . $returnTo);
+            exit;
+        }
+
+        $docsPayload = array_map(static fn(array $r): array => [
+            'id' => (int) $r['id'],
+            'name' => (string) $r['name'],
+        ], $rows);
+
+        // CAE actual (si existe)
+        $stmt = $pdo->prepare("
+            SELECT id
+            FROM cae_records
+            WHERE technician_id = :tid
+                AND is_current = TRUE
+            LIMIT 1
+        ");
+        $stmt->execute(['tid' => $technicianId]);
+        $currentCaeId = (int) ($stmt->fetchColumn() ?: 0);
+
+        $adminName = (string) ($_SESSION['user']['full_name'] ?? 'Administrador');
+
+        $listHtml = '';
+        foreach ($docsPayload as $d) {
+            $listHtml .= '<li>' . htmlspecialchars((string) $d['name']) . '</li>';
+        }
+
+        $extraHtml = $customMessage !== ''
+            ? '<p><strong>Mensaje del administrador:</strong><br>' . nl2br(htmlspecialchars($customMessage)) . '</p>'
+            : '';
+
+        $techName = trim(((string) ($tech['first_name'] ?? '')) . ' ' . ((string) ($tech['last_name'] ?? '')));
+
+        $body = "
+            <h2>Solicitud de documentación CAE</h2>
+            <p>Hola <strong>" . htmlspecialchars($techName !== '' ? $techName : 'técnico/a') . "</strong>,</p>
+            <p>Para gestionar tu CAE, necesitamos que nos envíes la siguiente documentación:</p>
+            <ul>{$listHtml}</ul>
+            {$extraHtml}
+            <hr class='divider'>
+            <p>Solicitud enviada por: <strong>" . htmlspecialchars($adminName) . "</strong></p>
+            <p>Gracias por tu colaboración.</p>
+        ";
+
+        $html = Mailer::template('Solicitud de documentos CAE', $body);
+        $sentOk = Mailer::send($techEmail, 'Solicitud de documentos para CAE', $html);
+
+        $status = $sentOk ? 'sent' : 'failed';
+        $emailError = $sentOk ? null : 'No se pudo enviar el email mediante proveedor.';
+
+        $stmt = $pdo->prepare("
+            INSERT INTO cae_document_requests
+            (
+                technician_id, cae_record_id, requested_by_user_id,
+                documents_requested_json, custom_message, status, email_error,
+                sent_at, created_at, updated_at
+            )
+            VALUES
+            (
+                :tid, :cae_id, :uid,
+                CAST(:docs AS jsonb), :msg, :status, :err,
+                NOW(), NOW(), NOW()
+            )
+        ");
+
+        $stmt->execute([
+            'tid'    => $technicianId,
+            'cae_id' => $currentCaeId > 0 ? $currentCaeId : null,
+            'uid'    => (int) ($_SESSION['user']['id'] ?? 0),
+            'docs'   => json_encode($docsPayload, JSON_UNESCAPED_UNICODE),
+            'msg'    => $customMessage !== '' ? $customMessage : null,
+            'status' => $status,
+            'err'    => $emailError,
+        ]);
+
+        if ($sentOk) {
+            $this->flash('Solicitud enviada por email al técnico correctamente.', 'success', 'Correcto');
+        } else {
+            $this->flash('Se registró la solicitud, pero el email no pudo enviarse.', 'warning', 'Aviso');
+        }
+
         header('Location: ' . $returnTo);
         exit;
     }
 
-    if ($current && $currentValid) {
-        // Actualiza CAE vigente (incluyendo fechas, como pediste)
-        $stmt = $pdo->prepare("
-            UPDATE cae_records
-            SET status = :status,
-                valid_from = :valid_from,
-                valid_until = :valid_until,
-                notes = :notes,
-                updated_at = NOW()
-            WHERE id = :id
-        ");
-        $stmt->execute([
-            'status' => $status,
-            'valid_from' => $validFrom,
-            'valid_until' => $validUntil,
-            'notes' => $notes,
-            'id' => (int) $current['id'],
-        ]);
+        /** @param array<string, string> $params */
+    public function store(array $params = []): void
+    {
+        $this->assertAreaAccess();
+        $this->requireAdmin();
 
-        $this->flash('CAE vigente guardado correctamente.', 'success', 'Correcto');
+        $technicianId = (int) ($params['id'] ?? 0);
+        $status = trim((string) ($_POST['status'] ?? 'pending_docs'));
+        $validFrom = trim((string) ($_POST['valid_from'] ?? ''));
+        $validUntil = trim((string) ($_POST['valid_until'] ?? ''));
+        $notes = trim((string) ($_POST['notes'] ?? ''));
+
+        $defaultReturn = $this->areaBaseUrl() . '/tecnicos/' . $technicianId . '/cae';
+        $returnTo = trim((string) ($_POST['return_to'] ?? $defaultReturn));
+
+        if ($technicianId <= 0) {
+            $this->flash('Técnico no válido.', 'danger', 'Error');
+            header('Location: ' . $this->areaBaseUrl() . '/tecnicos');
+            exit;
+        }
+
+        $pdo = Database::connection();
+
+        $stmt = $pdo->prepare("SELECT id FROM technicians WHERE id = :id AND is_active = TRUE LIMIT 1");
+        $stmt->execute(['id' => $technicianId]);
+        if (!(int) $stmt->fetchColumn()) {
+            $this->flash('Técnico no encontrado.', 'danger', 'Error');
+            header('Location: ' . $this->areaBaseUrl() . '/tecnicos');
+            exit;
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT id, valid_from, valid_until, status::text AS status, notes
+            FROM cae_records
+            WHERE technician_id = :tid
+            AND is_current = TRUE
+            LIMIT 1
+        ");
+        $stmt->execute(['tid' => $technicianId]);
+        $current = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        $today = date('Y-m-d');
+        $currentValid = $current && !empty($current['valid_until']) && ((string) $current['valid_until'] >= $today);
+
+        // Si no llegan fechas, usamos valores por defecto (hoy + 3 meses)
+        if ($validFrom === '') {
+            $validFrom = $today;
+        }
+        if ($validUntil === '') {
+            $validUntil = date('Y-m-d', strtotime($validFrom . ' +3 months'));
+        }
+
+        if ($validFrom > $validUntil) {
+            $this->flash('La fecha "válido desde" no puede ser mayor que "válido hasta".', 'warning', 'Aviso');
+            header('Location: ' . $returnTo);
+            exit;
+        }
+
+        // Comprueba si el CAE actual tiene archivo principal
+        $hasMainFile = false;
+        if ($current) {
+            $stmt = $pdo->prepare("
+                SELECT 1
+                FROM cae_documents
+                WHERE cae_record_id = :cae
+                AND is_active = TRUE
+                AND is_cae_file = TRUE
+                LIMIT 1
+            ");
+            $stmt->execute(['cae' => (int) $current['id']]);
+            $hasMainFile = (bool) $stmt->fetchColumn();
+        }
+
+        // Regla de negocio de estados según archivo principal
+        $allowedStatuses = $hasMainFile
+            ? ['pending_docs', 'in_review', 'approved', 'rejected', 'expired']
+            : ['pending_docs', 'in_review'];
+
+        if (!in_array($status, $allowedStatuses, true)) {
+            $this->flash(
+                $hasMainFile
+                    ? 'Estado de CAE no válido.'
+                    : 'Sin archivo CAE principal solo se permite Pendiente o En revisión.',
+                'warning',
+                'Aviso'
+            );
+            header('Location: ' . $returnTo);
+            exit;
+        }
+
+        if ($current && $currentValid) {
+            // Actualiza CAE vigente (incluyendo fechas, como pediste)
+            $stmt = $pdo->prepare("
+                UPDATE cae_records
+                SET status = :status,
+                    valid_from = :valid_from,
+                    valid_until = :valid_until,
+                    notes = :notes,
+                    updated_at = NOW()
+                WHERE id = :id
+            ");
+            $stmt->execute([
+                'status' => $status,
+                'valid_from' => $validFrom,
+                'valid_until' => $validUntil,
+                'notes' => $notes,
+                'id' => (int) $current['id'],
+            ]);
+
+            $this->flash('CAE vigente guardado correctamente.', 'success', 'Correcto');
+            header('Location: ' . $this->areaBaseUrl() . '/tecnicos/' . $technicianId . '#pane-hist');
+            exit;
+        }
+
+        // Si no existe vigente o está caducado => crea nueva revisión actual
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare("
+                UPDATE cae_records
+                SET is_current = FALSE,
+                    updated_at = NOW()
+                WHERE technician_id = :tid
+                AND is_current = TRUE
+            ");
+            $stmt->execute(['tid' => $technicianId]);
+
+            $stmt = $pdo->prepare("
+                INSERT INTO cae_records
+                (technician_id, status, issue_date, valid_from, valid_until, notes, is_current, created_at, updated_at)
+                VALUES
+                (:tid, :status, CURRENT_DATE, :valid_from, :valid_until, :notes, TRUE, NOW(), NOW())
+            ");
+            $stmt->execute([
+                'tid' => $technicianId,
+                'status' => $status,
+                'valid_from' => $validFrom,
+                'valid_until' => $validUntil,
+                'notes' => $notes,
+            ]);
+
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            $this->flash('No se pudo crear el CAE vigente.', 'danger', 'Error');
+            header('Location: ' . $returnTo);
+            exit;
+        }
+
+        $this->flash('CAE vigente creado correctamente.', 'success', 'Correcto');
         header('Location: ' . $this->areaBaseUrl() . '/tecnicos/' . $technicianId . '#pane-hist');
         exit;
     }
-
-    // Si no existe vigente o está caducado => crea nueva revisión actual
-    $pdo->beginTransaction();
-    try {
-        $stmt = $pdo->prepare("
-            UPDATE cae_records
-            SET is_current = FALSE,
-                updated_at = NOW()
-            WHERE technician_id = :tid
-              AND is_current = TRUE
-        ");
-        $stmt->execute(['tid' => $technicianId]);
-
-        $stmt = $pdo->prepare("
-            INSERT INTO cae_records
-            (technician_id, status, issue_date, valid_from, valid_until, notes, is_current, created_at, updated_at)
-            VALUES
-            (:tid, :status, CURRENT_DATE, :valid_from, :valid_until, :notes, TRUE, NOW(), NOW())
-        ");
-        $stmt->execute([
-            'tid' => $technicianId,
-            'status' => $status,
-            'valid_from' => $validFrom,
-            'valid_until' => $validUntil,
-            'notes' => $notes,
-        ]);
-
-        $pdo->commit();
-    } catch (\Throwable $e) {
-        $pdo->rollBack();
-        $this->flash('No se pudo crear el CAE vigente.', 'danger', 'Error');
-        header('Location: ' . $returnTo);
-        exit;
-    }
-
-    $this->flash('CAE vigente creado correctamente.', 'success', 'Correcto');
-    header('Location: ' . $this->areaBaseUrl() . '/tecnicos/' . $technicianId . '#pane-hist');
-    exit;
-}
 
     /** @param array<string, string> $params */
     public function update(array $params = []): void

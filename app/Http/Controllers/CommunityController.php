@@ -190,17 +190,39 @@ final class CommunityController extends Controller
             $communityDocTypes = $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
 
+        // Solicitudes RL pendientes (solo visibles para admin)
+        $pendingRlRequests = [];
+        if ($this->currentArea() === 'admin') {
+            $stmt = $pdo->prepare("
+                SELECT
+                    rr.id,
+                    rr.status,
+                    rr.request_notes,
+                    rr.requested_at,
+                    u.full_name AS requester_name,
+                    u.email     AS requester_email
+                FROM rl_requests rr
+                JOIN users u ON u.id = rr.requested_by_user_id
+                WHERE rr.community_id = :cid
+                    AND rr.status NOT IN ('sent', 'rejected')
+                ORDER BY rr.requested_at DESC
+            ");
+            $stmt->execute(['cid' => $id]);
+            $pendingRlRequests = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+
         $this->render('communities.show', [
-            'title' => 'Detalle Comunidad',
-            'baseUrl' => $this->baseUrl(),
-            'area' => $this->currentArea(),
-            'areaBaseUrl' => $this->areaBaseUrl(),
-            'community' => $community,
-            'riskReport' => $riskReport,
+            'title'                => 'Detalle Comunidad',
+            'baseUrl'              => $this->baseUrl(),
+            'area'                 => $this->currentArea(),
+            'areaBaseUrl'          => $this->areaBaseUrl(),
+            'community'            => $community,
+            'riskReport'           => $riskReport,
             'communityTechnicians' => $communityTechnicians,
-            'communityDocuments' => $communityDocuments,
+            'communityDocuments'   => $communityDocuments,
             'availableTechnicians' => $availableTechnicians,
-            'communityDocTypes' => $communityDocTypes,
+            'communityDocTypes'    => $communityDocTypes,
+            'pendingRlRequests'    => $pendingRlRequests,
         ]);
     }
 

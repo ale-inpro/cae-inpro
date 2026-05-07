@@ -292,3 +292,172 @@
       });
   });
 })();
+
+// ── Polling de notificaciones ────────────────────────────────────────────────
+(function () {
+  const btn  = document.querySelector('.app-notif-btn');
+  if (!btn) return;
+
+  const base     = document.querySelector('meta[name="app-base-url"]')?.content ?? '';
+  const area     = window.location.pathname.includes('/admin/') ? 'admin' : 'gestor';
+  const endpoint = base + '/' + area + '/notificaciones/poll';
+
+  // Contador inicial renderizado por PHP
+  const badgeEl  = () => document.querySelector('.app-notif-badge');
+  let lastUnread = badgeEl() ? parseInt(badgeEl().textContent.trim(), 10) : 0;
+
+  function updateBadge(count) {
+    let badge = badgeEl();
+    if (count > 0) {
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger app-notif-badge';
+        badge.style.fontSize = '0.6rem';
+        btn.appendChild(badge);
+      }
+      badge.textContent = count > 99 ? '99+' : count;
+      badge.style.display = '';
+    } else {
+      if (badge) badge.style.display = 'none';
+    }
+  }
+
+  function updateDropdown(items, viewAllUrl) {
+    const list = document.querySelector('.app-notif-list');
+    if (!list) return;
+
+    if (!items || items.length === 0) {
+      list.innerHTML = '<p class="text-muted small mb-0 px-1">No tienes notificaciones.</p>';
+      return;
+    }
+
+    const base = document.querySelector('meta[name="app-base-url"]')?.content ?? '';
+    const area = window.location.pathname.includes('/admin/') ? 'admin' : 'gestor';
+
+    list.innerHTML = items.map(n => {
+      // Solo admin + rl_request_created → enlace que marca como leída y redirige al #c-rl
+      const isClickable = area === 'admin' &&
+                          n.type === 'rl_request_created' &&
+                          (n.payload?.community_id ?? 0) > 0;
+
+      const openUrl = isClickable
+        ? base + '/admin/notificaciones/' + n.id + '/open'
+        : null;
+
+      const readClass = n.is_read ? 'text-muted' : 'fw-semibold';
+      const inner = `
+        <div class="${readClass}" style="${isClickable ? 'cursor:pointer;' : ''}">
+          <div>${escapeHtml(n.title)}</div>
+          <div class="fw-normal text-truncate">${escapeHtml(n.message)}</div>
+          <div class="text-muted" style="font-size:0.7rem;">${n.created_fmt}</div>
+        </div>`;
+
+      return openUrl
+        ? `<a href="${openUrl}" class="px-2 py-2 small border-bottom d-block text-decoration-none text-reset">${inner}</a>`
+        : `<div class="px-2 py-2 small border-bottom">${inner}</div>`;
+    }).join('');
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function showNotifToast(title, message, opts = {}) {
+    let stack = document.querySelector('.toast-stack');
+    if (!stack) {
+      stack = document.createElement('div');
+      stack.className = 'toast-stack';
+      document.body.appendChild(stack);
+    }
+
+    const base = document.querySelector('meta[name="app-base-url"]')?.content ?? '';
+    const area = window.location.pathname.includes('/admin/') ? 'admin' : 'gestor';
+
+    // Construir URL contextual según tipo y payload
+    let actionUrl  = base + '/' + area + '/notificaciones'; // destino por defecto
+    let actionText = 'Ver todas las notificaciones →';
+
+    const communityId = opts.payload?.community_id ?? 0;
+    const type        = opts.type ?? '';
+    const notifId     = opts.id ?? 0;
+
+    // Admin + solicitud RL → endpoint /open: marca como leída y fuerza recarga completa
+    // aunque ya estés en la misma comunidad (server-side redirect = full reload).
+    // El gestor siempre ve el enlace a su pantalla de notificaciones.
+    if (area === 'admin' && communityId > 0 && type === 'rl_request_created' && notifId > 0) {
+      actionUrl  = base + '/admin/notificaciones/' + notifId + '/open';
+      actionText = 'Ver solicitud en la comunidad →';
+    }
+
+    const toast = document.createElement('div');
+    toast.className = 'toast flash-toast flash-toast--info border-0 show';
+    toast.setAttribute('role', 'alert');
+    toast.innerHTML = `
+      <div class="toast-header">
+        <i class="bi bi-bell-fill text-warning me-2"></i>
+        <strong class="me-auto">${escapeHtml(title)}</strong>
+        <small>ahora</small>
+        <button type="button" class="btn-close ms-2" data-bs-dismiss="toast"></button>
+      </div>
+      <div class="toast-body">
+        ${escapeHtml(message)}
+        <div class="mt-1">
+          <a href="${actionUrl}" class="small text-decoration-none fw-semibold"
+             onclick="event.preventDefault(); window.location.href='${actionUrl}'">
+            ${actionText}
+          </a>
+        </div>
+      </div>
+    `;
+    stack.appendChild(toast);
+
+    new bootstrap.Toast(toast, { delay: 6000 }).show();
+    toast.addEventListener('hidden.bs.toast', () => toast.remove());
+  }
+
+  async function poll() {
+    try {
+      const res  = await fetch(endpoint, { credentials: 'same-origin', cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+
+      const newUnread = data.unread ?? 0;
+
+      if (newUnread > lastUnread) {
+        btn.classList.add('app-notif-pulse');
+        setTimeout(() => btn.classList.remove('app-notif-pulse'), 1000);
+
+        const newest = data.items?.[0];
+
+        // ── Auto-recarga si el admin está en la pestaña #c-rl de una comunidad
+        const isRlRequest = (newest?.type ?? '') === 'rl_request_created';
+        const onRlTab     = window.location.hash === '#c-rl' &&
+                            /\/comunidades\/\d+/.test(window.location.pathname);
+
+        if (isRlRequest && onRlTab) {
+          // FIX: reload() en lugar de replace() — replace con hash no recarga la página
+          window.location.reload();
+          return;
+        }
+
+        // Toast con URL contextual (pasa payload e id para construir enlace correcto)
+        if (newest && !newest.is_read) {
+          showNotifToast(newest.title, newest.message, {
+            id:      newest.id      ?? 0,
+            type:    newest.type    ?? '',
+            payload: newest.payload ?? null,
+          });
+        }
+      }
+
+      lastUnread = newUnread;
+      updateBadge(newUnread);
+      updateDropdown(data.items ?? []);
+
+    } catch (_) { /* silencioso */ }
+  }
+
+  setInterval(poll, 30_000); // cada 30 segundos
+})();

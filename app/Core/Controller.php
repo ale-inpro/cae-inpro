@@ -157,4 +157,41 @@ abstract class Controller
             exit;
         }
     }
+
+        /**
+     * Convierte un valor booleano de PostgreSQL a PHP bool.
+     * PDO/pgsql devuelve TRUE como 't' o '1' y FALSE como 'f' o ''.
+     */
+    protected function boolFromPg(mixed $val): bool
+    {
+        if (is_bool($val)) {
+            return $val;
+        }
+        return in_array($val, ['t', '1', 'true', 'yes', 'on'], true);
+    }
+
+    /**
+     * Inserta una notificación en la tabla para un usuario.
+     * @param array<string, mixed>|null $payload
+     */
+    protected function createNotification(
+        int $userId,
+        string $type,
+        string $title,
+        string $message,
+        ?array $payload = null
+    ): void {
+        $pdo = \App\Core\Database::connection();
+        $stmt = $pdo->prepare("
+            INSERT INTO notifications (user_id, type, title, message, payload_json, is_read, created_at)
+            VALUES (:uid, :type, :title, :message, CAST(:payload AS jsonb), FALSE, NOW())
+        ");
+        $stmt->execute([
+            'uid'     => $userId,
+            'type'    => $type,
+            'title'   => $title,
+            'message' => $message,
+            'payload' => $payload ? json_encode($payload, JSON_UNESCAPED_UNICODE) : null,
+        ]);
+    }
 }

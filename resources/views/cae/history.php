@@ -5,6 +5,8 @@ $t = $tech ?? [];
 $current = $currentCae ?? null;
 $isValid = (bool) ($isCurrentValid ?? false);
 $doc = $currentCaeDoc ?? null;
+$requestableDocTypes = $requestableDocTypes ?? [];
+$caeDocRequests = $caeDocRequests ?? [];
 
 $techId = (int) ($t['id'] ?? 0);
 $techName = trim(((string) ($t['first_name'] ?? '')) . ' ' . ((string) ($t['last_name'] ?? '')));
@@ -59,7 +61,17 @@ $statusBadge = static function (string $status): string {
             <?php endif; ?>
         </p>
     </div>
-    <div class="page-header-center"></div>
+    <div class="page-header-center d-flex justify-content-center">
+        <button
+            type="button"
+            class="btn btn-primary btn-sm"
+            data-bs-toggle="modal"
+            data-bs-target="#requestCaeDocsModal"
+            title="Solicitar documentos CAE"
+        >
+            <i class="bi bi-envelope-paper me-1"></i> Solicitar docs CAE
+        </button>
+    </div>
     <div class="page-header-right d-flex align-items-center gap-2">
         <a class="btn btn-outline-secondary btn-sm" href="<?= htmlspecialchars($returnToTech) ?>" title="Volver">
             <i class="bi bi-arrow-left"></i>
@@ -84,6 +96,69 @@ $statusBadge = static function (string $status): string {
                     <?php endif; ?>
                 <?php else: ?>
                     <p class="text-muted mb-0">No hay revisión CAE actual. Crea una nueva para empezar.</p>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="subpanel">
+            <div class="subpanel-h d-flex justify-content-between align-items-center">
+                <span>Historial de solicitudes de documentos</span>
+                <span class="badge text-bg-light text-dark"><?= count($caeDocRequests) ?></span>
+            </div>
+            <div class="subpanel-b p-0">
+                <?php if (empty($caeDocRequests)): ?>
+                    <p class="text-muted small mb-0 p-3">Aún no se han enviado solicitudes de documentos para este técnico.</p>
+                <?php else: ?>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Documentos solicitados</th>
+                                    <th>Estado</th>
+                                    <th>Solicitado por</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            <?php foreach ($caeDocRequests as $r): ?>
+                                <?php
+                                    $docs = json_decode((string) ($r['documents_requested_json'] ?? '[]'), true) ?: [];
+                                    $status = (string) ($r['status'] ?? '');
+                                    $badge = match ($status) {
+                                        'sent' => 'text-bg-success',
+                                        'failed' => 'text-bg-warning',
+                                        'completed' => 'text-bg-primary',
+                                        'cancelled' => 'text-bg-secondary',
+                                        default => 'text-bg-light text-dark',
+                                    };
+                                    $statusLabel = match ($status) {
+                                        'sent' => 'Enviada',
+                                        'failed' => 'Error envío',
+                                        'completed' => 'Completada',
+                                        'cancelled' => 'Cancelada',
+                                        default => ucfirst($status),
+                                    };
+                                ?>
+                                <tr>
+                                    <td><?= htmlspecialchars((string) ($r['sent_at'] ?? '-')) ?></td>
+                                    <td>
+                                        <?php if (empty($docs)): ?>
+                                            <span class="text-muted">-</span>
+                                        <?php else: ?>
+                                            <?php foreach ($docs as $d): ?>
+                                                <span class="badge text-bg-light border me-1 mb-1"><?= htmlspecialchars((string) ($d['name'] ?? 'Documento')) ?></span>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td><span class="badge <?= $badge ?>"><?= $statusLabel ?></span></td>
+                                    <td><?= htmlspecialchars((string) ($r['requested_by_name'] ?? '-')) ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
                 <?php endif; ?>
             </div>
         </div>
@@ -185,6 +260,61 @@ $statusBadge = static function (string $status): string {
                     <div class="alert alert-light border small mb-0">Crea primero una revision CAE para habilitar la subida de su archivo.</div>
                 <?php endif; ?>
             </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="requestCaeDocsModal" tabindex="-1" aria-labelledby="requestCaeDocsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="requestCaeDocsModalLabel">
+                    <i class="bi bi-envelope-paper me-2"></i>Solicitar documentos CAE al técnico
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+
+            <form method="post" action="<?= htmlspecialchars($ab) ?>/tecnicos/<?= $techId ?>/cae/request-docs">
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        Se enviará un email a <strong><?= htmlspecialchars((string) ($t['email'] ?? 'sin email')) ?></strong> con la solicitud de documentos.
+                    </p>
+
+                    <label class="form-label fw-semibold">Documentos solicitados <span class="text-danger">*</span></label>
+                    <div class="row g-2 mb-3">
+                        <?php foreach ($requestableDocTypes as $dt): ?>
+                            <div class="col-md-6">
+                                <label class="form-check border rounded p-2 h-100">
+                                    <input class="form-check-input me-2" type="checkbox" name="document_type_ids[]" value="<?= (int) $dt['id'] ?>">
+                                    <span class="form-check-label"><?= htmlspecialchars((string) $dt['name']) ?></span>
+                                </label>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <?php if (empty($requestableDocTypes)): ?>
+                        <div class="alert alert-warning py-2 mb-3">
+                            No hay tipos de documento configurados para <code>technician_cae</code>.
+                        </div>
+                    <?php endif; ?>
+
+                    <label class="form-label fw-semibold" for="custom_message">Mensaje adicional (opcional)</label>
+                    <textarea
+                        id="custom_message"
+                        name="custom_message"
+                        class="form-control"
+                        rows="4"
+                        placeholder="Ejemplo: Necesitamos esta documentación antes del viernes para completar tu CAE."
+                    ></textarea>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" <?= empty($requestableDocTypes) ? 'disabled' : '' ?>>
+                        <i class="bi bi-send me-1"></i> Enviar solicitud
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>

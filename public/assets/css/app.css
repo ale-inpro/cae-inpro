@@ -1167,3 +1167,13 @@ body{
         scroll-behavior: auto !important;
     }
 }
+
+/* Pulso en campanita cuando llega notificación nueva */
+@keyframes notifPulse {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.25); }
+    100% { transform: scale(1); }
+  }
+  .app-notif-pulse {
+    animation: notifPulse 0.5s ease;
+  }

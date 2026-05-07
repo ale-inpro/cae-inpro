@@ -8,6 +8,7 @@ use App\Http\Controllers\CommunityController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\RiskReportController;
 use App\Http\Controllers\TechnicianController;
+use App\Http\Controllers\NotificationController;
 
 return [
     'routes' => [
@@ -34,6 +35,7 @@ return [
         ['method' => 'DELETE', 'path' => '/admin/tecnicos/{id}', 'action' => [TechnicianController::class, 'destroy']],
         ['method' => 'GET', 'path' => '/admin/tecnicos/{id}/cae', 'action' => [CaeController::class, 'history']],
         ['method' => 'POST', 'path' => '/admin/tecnicos/{id}/cae', 'action' => [CaeController::class, 'store']],
+        ['method' => 'POST', 'path' => '/admin/tecnicos/{id}/cae/request-docs', 'action' => [CaeController::class, 'requestDocuments']],
         ['method' => 'PUT', 'path' => '/admin/cae/{id}', 'action' => [CaeController::class, 'update']],
         ['method' => 'DELETE', 'path' => '/admin/cae/{id}', 'action' => [CaeController::class, 'destroy']],
         ['method' => 'POST', 'path' => '/admin/cae/{id}/documentos', 'action' => [CaeController::class, 'uploadDocument']],
@@ -62,5 +64,34 @@ return [
         ['method' => 'GET', 'path' => '/admin/comunidades/documentos/{docId}/download', 'action' => [CommunityController::class, 'downloadDocument']],
         ['method' => 'GET', 'path' => '/gestor/comunidades/{id}/riesgos/download', 'action' => [RiskReportController::class, 'downloadReport']],
         ['method' => 'DELETE', 'path' => '/admin/comunidades/{id}/riesgos', 'action' => [RiskReportController::class, 'deleteReport']],
+        ['method' => 'POST', 'path' => '/admin/comunidades/{id}/riesgos/requests/{requestId}/reject', 'action' => [RiskReportController::class, 'rejectRequest']],
+    
+        // Notificaciones (admin)
+        ['method' => 'GET',  'path' => '/admin/notificaciones',          'action' => [NotificationController::class, 'index']],
+        ['method' => 'POST', 'path' => '/admin/notificaciones/read-all', 'action' => [NotificationController::class, 'markAllRead']],
+
+        // Notificaciones (gestor)
+        ['method' => 'GET',  'path' => '/gestor/notificaciones',          'action' => [NotificationController::class, 'index']],
+        ['method' => 'POST', 'path' => '/gestor/notificaciones/read-all', 'action' => [NotificationController::class, 'markAllRead']],
+
+        // Polling de notificaciones (endpoint JSON)
+        ['method' => 'GET',  'path' => '/admin/notificaciones/poll',             'action' => [NotificationController::class, 'pollData']],
+        ['method' => 'GET',  'path' => '/gestor/notificaciones/poll',            'action' => [NotificationController::class, 'pollData']],
+
+        // Marcar una notificación como leída
+        ['method' => 'POST', 'path' => '/admin/notificaciones/{notifId}/read',   'action' => [NotificationController::class, 'markOneRead']],
+        ['method' => 'POST', 'path' => '/gestor/notificaciones/{notifId}/read',  'action' => [NotificationController::class, 'markOneRead']],
+
+        // Abrir notificación: marca como leída y redirige a su destino (solo admin)
+        ['method' => 'GET', 'path' => '/admin/notificaciones/{notifId}/open', 'action' => [NotificationController::class, 'openNotification']],
+
+        // Solicitud de informe RL por el gestor
+        ['method' => 'POST', 'path' => '/gestor/comunidades/{id}/riesgos/request', 'action' => [RiskReportController::class, 'requestFromGestor']],
+
+        // Eliminar notificaciones
+        ['method' => 'POST', 'path' => '/admin/notificaciones/{notifId}/delete', 'action' => [NotificationController::class, 'deleteOne']],
+        ['method' => 'POST', 'path' => '/gestor/notificaciones/{notifId}/delete','action' => [NotificationController::class, 'deleteOne']],
+        ['method' => 'POST', 'path' => '/admin/notificaciones/delete-all',       'action' => [NotificationController::class, 'deleteAll']],
+        ['method' => 'POST', 'path' => '/gestor/notificaciones/delete-all',      'action' => [NotificationController::class, 'deleteAll']],
     ],
 ];
