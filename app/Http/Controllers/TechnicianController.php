@@ -169,25 +169,23 @@ final class TechnicianController extends Controller
         $stmt->execute(['id' => $id]);
         $caeHistory = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $caeDocuments = [];
-        if (!empty($currentCae['id'])) {
-            $stmt = $pdo->prepare("
-                SELECT
-                    cd.id,
-                    dt.name AS document_name,
-                    cd.original_filename,
-                    cd.storage_path,
-                    cd.uploaded_at
-                FROM cae_documents cd
-                JOIN document_types dt ON dt.id = cd.document_type_id
-                WHERE cd.cae_record_id = :cae_id
-                  AND cd.is_active = TRUE
-                  AND cd.is_cae_file = FALSE
-                ORDER BY cd.uploaded_at DESC
-            ");
-            $stmt->execute(['cae_id' => (int) $currentCae['id']]);
-            $caeDocuments = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        }
+        $stmt = $pdo->prepare("
+            SELECT
+                cd.id,
+                dt.name AS document_name,
+                cd.original_filename,
+                cd.storage_path,
+                cd.uploaded_at
+            FROM cae_documents cd
+            JOIN document_types dt ON dt.id = cd.document_type_id
+            JOIN cae_records cr ON cr.id = cd.cae_record_id
+            WHERE cr.technician_id = :tid
+            AND cd.is_active = TRUE
+            AND cd.is_cae_file = FALSE
+            ORDER BY cd.uploaded_at DESC
+        ");
+        $stmt->execute(['tid' => $id]);
+        $caeDocuments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $caeDocTypes = [];
         if ($this->currentArea() === 'admin') {

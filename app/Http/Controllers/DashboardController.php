@@ -64,10 +64,11 @@ final class DashboardController extends Controller
         $kpiTechnicians = 0;
         $kpiApproved = 0;
         $statusMap = [
-            'approved' => 0,
-            'in_review' => 0,
+            'approved'     => 0,
+            'in_review'    => 0,
+            'pending'      => 0,
             'pending_docs' => 0,
-            'rejected' => 0,
+            'rejected'     => 0,
         ];
 
         if ($scope === 'admin') {
@@ -151,10 +152,11 @@ final class DashboardController extends Controller
             'kpiCommunities' => $kpiCommunities,
             'kpiTechnicians' => $kpiTechnicians,
             'kpiApproved' => $kpiApproved,
-            'chartLabels' => ['Aprobado', 'En revisión', 'Pendiente', 'Rechazado'],
+            'chartLabels' => ['Aprobado', 'En revisión', 'Pendiente', 'Pendiente docs.', 'Rechazado'],
             'chartSeries' => [
                 $statusMap['approved'],
                 $statusMap['in_review'],
+                $statusMap['pending'],
                 $statusMap['pending_docs'],
                 $statusMap['rejected'],
             ],

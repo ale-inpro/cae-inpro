@@ -125,12 +125,12 @@
 
   const chartEl = document.querySelector("#cae-status-chart");
   if (chartEl && typeof ApexCharts !== "undefined") {
-    let series = [0, 0, 0, 0];
-    let labels = ["Aprobado", "En revisión", "Pendiente", "Rechazado"];
+    let series = [0, 0, 0, 0, 0];
+    let labels = ["Aprobado", "En revisión", "Pendiente", "Pendiente docs.", "Rechazado"];
 
     try {
-      series = JSON.parse(chartEl.dataset.series || "[0,0,0,0]");
-      labels = JSON.parse(chartEl.dataset.labels || '["Aprobado","En revisión","Pendiente","Rechazado"]');
+      series = JSON.parse(chartEl.dataset.series || "[0,0,0,0,0]");
+      labels = JSON.parse(chartEl.dataset.labels || '["Aprobado","En revisión","Pendiente","Pendiente docs.","Rechazado"]');
     } catch (e) {
       // keep defaults
     }
@@ -139,7 +139,7 @@
       chart: { type: "donut", height: 320 },
       series,
       labels,
-      colors: ["#10b981", "#38bdf8", "#f59e0b", "#ef4444"],
+      colors: ["#10b981", "#38bdf8", "#6b7280", "#f59e0b", "#ef4444"],
       legend: { position: "bottom" },
       dataLabels: { enabled: true },
       noData: { text: "Sin datos" }

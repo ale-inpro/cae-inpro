@@ -5,21 +5,25 @@ $items = $technicians ?? [];
 
 $badgeClass = static function (string $status): string {
     return match ($status) {
-        'approved' => 'text-bg-success',
-        'in_review' => 'text-bg-warning',
-        'rejected' => 'text-bg-danger',
-        'pending_docs' => 'text-bg-secondary',
-        default => 'text-bg-light text-dark',
+        'approved'     => 'text-bg-success',
+        'in_review'    => 'text-bg-warning',
+        'rejected'     => 'text-bg-danger',
+        'pending'      => 'text-bg-secondary',
+        'pending_docs' => 'text-bg-warning text-dark',
+        'expired'      => 'text-bg-dark',
+        default        => 'text-bg-light text-dark',
     };
 };
 
 $label = static function (string $status): string {
     return match ($status) {
-        'approved' => 'Aprobado',
-        'in_review' => 'En revisión',
-        'rejected' => 'Rechazado',
-        'pending_docs' => 'Pendiente',
-        default => ucfirst($status),
+        'approved'     => 'Aprobado',
+        'in_review'    => 'En revisión',
+        'rejected'     => 'Rechazado',
+        'pending'      => 'Pendiente',
+        'pending_docs' => 'Pendiente docs.',
+        'expired'      => 'Caducado',
+        default        => ucfirst($status),
     };
 };
 ?>

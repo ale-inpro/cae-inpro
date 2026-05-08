@@ -31,22 +31,24 @@ $riskBadge = static function (string $status): string {
 
 $caeLabel = static function (string $status): string {
     return match ($status) {
-        'approved' => 'Aprobado',
-        'in_review' => 'En revisión',
-        'pending_docs' => 'Pendiente',
-        'rejected' => 'Rechazado',
-        'expired' => 'Caducado',
-        default => ucfirst($status),
+        'approved'     => 'Aprobado',
+        'in_review'    => 'En revisión',
+        'pending'      => 'Pendiente',
+        'pending_docs' => 'Pendiente docs.',
+        'rejected'     => 'Rechazado',
+        'expired'      => 'Caducado',
+        default        => ucfirst($status),
     };
 };
 $caeBadge = static function (string $status): string {
     return match ($status) {
-        'approved' => 'text-bg-success',
-        'in_review' => 'text-bg-warning',
-        'pending_docs' => 'text-bg-secondary',
-        'rejected' => 'text-bg-danger',
-        'expired' => 'text-bg-dark',
-        default => 'text-bg-light text-dark',
+        'approved'     => 'text-bg-success',
+        'in_review'    => 'text-bg-warning',
+        'pending'      => 'text-bg-secondary',
+        'pending_docs' => 'text-bg-warning text-dark',
+        'rejected'     => 'text-bg-danger',
+        'expired'      => 'text-bg-dark',
+        default        => 'text-bg-light text-dark',
     };
 };
 ?>

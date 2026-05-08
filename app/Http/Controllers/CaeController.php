@@ -112,16 +112,30 @@ final class CaeController extends Controller
         $stmt->execute(['tid' => $technicianId]);
         $caeDocRequests = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        // Cargar docs existentes del técnico para el formulario IA
+        $stmt = $pdo->prepare("
+            SELECT cd.id, cd.original_filename, cd.mime_type, cd.storage_path
+            FROM cae_documents cd
+            JOIN cae_records cr ON cr.id = cd.cae_record_id
+            WHERE cr.technician_id = :tid
+                AND cd.is_active = TRUE
+            ORDER BY cd.uploaded_at DESC
+            LIMIT 50
+        ");
+        $stmt->execute(['tid' => $technicianId]);
+        $existingCaeDocs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
         $this->render('cae.history', [
-            'title' => 'Nueva revisión CAE',
-            'baseUrl' => $this->baseUrl(),
-            'areaBaseUrl' => $this->areaBaseUrl(),
-            'tech' => $tech,
-            'currentCae' => $currentCae,
-            'isCurrentValid' => $isCurrentValid,
-            'currentCaeDoc' => $currentCaeDoc,
+            'title'           => 'Nueva revisión CAE',
+            'baseUrl'         => $this->baseUrl(),
+            'areaBaseUrl'     => $this->areaBaseUrl(),
+            'tech'            => $tech,
+            'currentCae'      => $currentCae,
+            'isCurrentValid'  => $isCurrentValid,
+            'currentCaeDoc'   => $currentCaeDoc,
             'requestableDocTypes' => $requestableDocTypes,
-            'caeDocRequests' => $caeDocRequests,
+            'caeDocRequests'  => $caeDocRequests,
+            'existingCaeDocs' => $existingCaeDocs,
         ]);
     }
 
@@ -653,13 +667,14 @@ final class CaeController extends Controller
                 'mime' => $mime,
                 'size' => $size,
                 'user_id' => (int) ($_SESSION['user']['id'] ?? 0),
-                'is_cae_file' => $isMainFile,
+                'is_cae_file' => ($isMainFile ? 'true' : 'false'),
             ]);
 
             $pdo->commit();
         } catch (\Throwable $e) {
             $pdo->rollBack();
-            $this->flash('No se pudo guardar el documento.', 'danger', 'Error');
+            error_log('[uploadDocument ERROR] ' . $e->getMessage());
+            $this->flash('No se pudo guardar el documento: ' . $e->getMessage(), 'danger', 'Error');
             header('Location: ' . $returnTo);
             exit;
         }
@@ -680,7 +695,7 @@ final class CaeController extends Controller
         $this->requireAdmin();
 
         $documentId = (int) ($params['documentId'] ?? 0);
-        $returnTo = (string) ($_POST['return_to'] ?? ($this->areaBaseUrl() . '/tecnicos'));
+        $returnTo   = (string) ($_POST['return_to'] ?? ($this->areaBaseUrl() . '/tecnicos'));
 
         if ($documentId <= 0) {
             $this->flash('ID de documento no válido.', 'danger', 'Error');
@@ -688,18 +703,36 @@ final class CaeController extends Controller
             exit;
         }
 
-        $pdo = Database::connection();
+        $pdo  = Database::connection();
+
+        // Obtener info del documento antes de eliminarlo
+        $stmt = $pdo->prepare("
+            SELECT id, is_cae_file, cae_record_id
+            FROM cae_documents
+            WHERE id = :id AND is_active = TRUE
+            LIMIT 1
+        ");
+        $stmt->execute(['id' => $documentId]);
+        $docRow = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        // Marcar como inactivo
         $stmt = $pdo->prepare("
             UPDATE cae_documents
-            SET is_active = FALSE,
-                updated_at = NOW()
-            WHERE id = :id
-              AND is_active = TRUE
+            SET is_active = FALSE, updated_at = NOW()
+            WHERE id = :id AND is_active = TRUE
         ");
         $stmt->execute(['id' => $documentId]);
 
         if ($stmt->rowCount() > 0) {
-            $this->flash('Documento CAE eliminado correctamente.', 'success', 'Correcto');
+            // Si era el archivo principal del CAE, cambiar estado a 'pending'
+            if ($docRow && $this->boolFromPg($docRow['is_cae_file'] ?? false)) {
+                $pdo->prepare("
+                    UPDATE cae_records
+                    SET status = 'pending', updated_at = NOW()
+                    WHERE id = :cae_id AND is_current = TRUE
+                ")->execute(['cae_id' => (int) $docRow['cae_record_id']]);
+            }
+            $this->flash('Documento CAE eliminado. Estado del CAE actualizado a Pendiente.', 'success', 'Correcto');
         } else {
             $this->flash('No se encontró el documento o ya estaba eliminado.', 'warning', 'Aviso');
         }

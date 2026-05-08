@@ -48,8 +48,8 @@
         <h3 class="h6 mb-3">Estado CAE</h3>
         <div
             id="cae-status-chart"
-            data-series='<?= json_encode(array_values($chartSeries ?? [0, 0, 0, 0]), JSON_UNESCAPED_UNICODE) ?>'
-            data-labels='<?= json_encode(array_values($chartLabels ?? ['Aprobado', 'En revisión', 'Pendiente', 'Rechazado']), JSON_UNESCAPED_UNICODE) ?>'
+            data-series='<?= json_encode(array_values($chartSeries ?? [0, 0, 0, 0, 0]), JSON_UNESCAPED_UNICODE) ?>'
+            data-labels='<?= json_encode(array_values($chartLabels ?? ['Aprobado', 'En revisión', 'Pendiente', 'Pendiente docs.', 'Rechazado']), JSON_UNESCAPED_UNICODE) ?>'
         ></div>
     </div>
 </div>

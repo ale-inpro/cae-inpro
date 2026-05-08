@@ -9,6 +9,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\RiskReportController;
 use App\Http\Controllers\TechnicianController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\CaeAiController;
 
 return [
     'routes' => [
@@ -93,5 +94,9 @@ return [
         ['method' => 'POST', 'path' => '/gestor/notificaciones/{notifId}/delete','action' => [NotificationController::class, 'deleteOne']],
         ['method' => 'POST', 'path' => '/admin/notificaciones/delete-all',       'action' => [NotificationController::class, 'deleteAll']],
         ['method' => 'POST', 'path' => '/gestor/notificaciones/delete-all',      'action' => [NotificationController::class, 'deleteAll']],
+
+        ['method' => 'POST', 'path' => '/admin/tecnicos/{id}/cae/ia/generate', 'action' => [CaeAiController::class, 'generate']],
+        ['method' => 'POST', 'path' => '/admin/tecnicos/{id}/cae/ia/save',     'action' => [CaeAiController::class, 'save']],
+        ['method' => 'GET',  'path' => '/admin/cae/ia/{generationId}/download', 'action' => [CaeAiController::class, 'download']],
     ],
 ];
