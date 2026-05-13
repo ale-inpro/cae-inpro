@@ -8,6 +8,7 @@ use App\Core\Controller;
 use App\Core\Database;
 use PDO;
 use App\Services\Mailer;
+use App\Services\DocumentIntakeAiService;
 
 final class CaeController extends Controller
 {
@@ -32,6 +33,21 @@ final class CaeController extends Controller
         }
 
         $pdo = Database::connection();
+        $hasExpiresAt = false;
+        try {
+            $colStmt = $pdo->prepare("
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'cae_documents'
+                  AND column_name = 'expires_at'
+                LIMIT 1
+            ");
+            $colStmt->execute();
+            $hasExpiresAt = (bool) $colStmt->fetchColumn();
+        } catch (\Throwable) {
+            $hasExpiresAt = false;
+        }
 
         $stmt = $pdo->prepare("
             SELECT id, first_name, last_name, professions, city, email
@@ -89,9 +105,21 @@ final class CaeController extends Controller
             SELECT id, name
             FROM document_types
             WHERE scope = 'technician_cae'
-              AND is_active = TRUE
-              AND is_cae_file_type = FALSE
-            ORDER BY name
+            AND is_active = TRUE
+            AND is_cae_file_type = FALSE
+            AND name IN (
+                'Certificado de estar al corriente con Hacienda',
+                'Certificado de estar al corriente con Seguridad Social',
+                'Póliza de Responsabilidad Civil',
+                'Certificado de Prevención de Riesgos Laborales'
+            )
+            ORDER BY CASE name
+                WHEN 'Certificado de estar al corriente con Hacienda' THEN 1
+                WHEN 'Certificado de estar al corriente con Seguridad Social' THEN 2
+                WHEN 'Póliza de Responsabilidad Civil' THEN 3
+                WHEN 'Certificado de Prevención de Riesgos Laborales' THEN 4
+                ELSE 99
+            END
         ");
         $requestableDocTypes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -113,12 +141,14 @@ final class CaeController extends Controller
         $caeDocRequests = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         // Cargar docs existentes del técnico para el formulario IA
+        // Excluye archivos CAE principales (is_cae_file = TRUE) — esos son el OUTPUT, no el INPUT
         $stmt = $pdo->prepare("
             SELECT cd.id, cd.original_filename, cd.mime_type, cd.storage_path
             FROM cae_documents cd
             JOIN cae_records cr ON cr.id = cd.cae_record_id
             WHERE cr.technician_id = :tid
                 AND cd.is_active = TRUE
+                AND cd.is_cae_file = FALSE
             ORDER BY cd.uploaded_at DESC
             LIMIT 50
         ");
@@ -200,7 +230,19 @@ final class CaeController extends Controller
                 AND scope = 'technician_cae'
                 AND is_active = TRUE
                 AND is_cae_file_type = FALSE
-            ORDER BY name
+                AND name IN (
+                    'Certificado de estar al corriente con Hacienda',
+                    'Certificado de estar al corriente con Seguridad Social',
+                    'Póliza de Responsabilidad Civil',
+                    'Certificado de Prevención de Riesgos Laborales'
+                )
+            ORDER BY CASE name
+                WHEN 'Certificado de estar al corriente con Hacienda' THEN 1
+                WHEN 'Certificado de estar al corriente con Seguridad Social' THEN 2
+                WHEN 'Póliza de Responsabilidad Civil' THEN 3
+                WHEN 'Certificado de Prevención de Riesgos Laborales' THEN 4
+                ELSE 99
+            END
         ";
         $stmt = $pdo->prepare($sql);
         foreach ($docTypeIds as $k => $id) {
@@ -231,7 +273,11 @@ final class CaeController extends Controller
         $stmt->execute(['tid' => $technicianId]);
         $currentCaeId = (int) ($stmt->fetchColumn() ?: 0);
 
-        $adminName = (string) ($_SESSION['user']['full_name'] ?? 'Administrador');
+        $adminName    = (string) ($_SESSION['user']['full_name'] ?? 'Administrador');
+        $techName     = trim(((string) ($tech['first_name'] ?? '')) . ' ' . ((string) ($tech['last_name'] ?? '')));
+        $uploadToken  = bin2hex(random_bytes(32));
+        $tokenExpires = date('Y-m-d H:i:s', strtotime('+7 days'));
+        $portalUrl    = $this->baseUrl() . '/portal/' . $uploadToken;
 
         $listHtml = '';
         foreach ($docsPayload as $d) {
@@ -242,23 +288,31 @@ final class CaeController extends Controller
             ? '<p><strong>Mensaje del administrador:</strong><br>' . nl2br(htmlspecialchars($customMessage)) . '</p>'
             : '';
 
-        $techName = trim(((string) ($tech['first_name'] ?? '')) . ' ' . ((string) ($tech['last_name'] ?? '')));
-
         $body = "
             <h2>Solicitud de documentación CAE</h2>
             <p>Hola <strong>" . htmlspecialchars($techName !== '' ? $techName : 'técnico/a') . "</strong>,</p>
             <p>Para gestionar tu CAE, necesitamos que nos envíes la siguiente documentación:</p>
             <ul>{$listHtml}</ul>
             {$extraHtml}
-            <hr class='divider'>
+            <div style='margin-top:24px; padding:16px; background:#f0fdf4; border-radius:8px; border:1px solid #86efac;'>
+                <p style='margin:0 0 10px 0; font-weight:600;'>📎 Subir documentos directamente:</p>
+                <a href='" . htmlspecialchars($portalUrl) . "'
+                   style='display:inline-block; padding:10px 20px; background:#059669; color:#fff; border-radius:6px; text-decoration:none; font-weight:600;'>
+                    Acceder al portal de documentos
+                </a>
+                <p style='margin:10px 0 0 0; font-size:12px; color:#6b7280;'>
+                    Este enlace es personal, de un solo uso y caduca el " . date('d/m/Y', strtotime('+7 days')) . ".
+                </p>
+            </div>
+            <hr>
             <p>Solicitud enviada por: <strong>" . htmlspecialchars($adminName) . "</strong></p>
             <p>Gracias por tu colaboración.</p>
         ";
 
-        $html = Mailer::template('Solicitud de documentos CAE', $body);
+        $html   = Mailer::template('Solicitud de documentos CAE', $body);
         $sentOk = Mailer::send($techEmail, 'Solicitud de documentos para CAE', $html);
 
-        $status = $sentOk ? 'sent' : 'failed';
+        $status     = $sentOk ? 'sent' : 'failed';
         $emailError = $sentOk ? null : 'No se pudo enviar el email mediante proveedor.';
 
         $stmt = $pdo->prepare("
@@ -266,24 +320,28 @@ final class CaeController extends Controller
             (
                 technician_id, cae_record_id, requested_by_user_id,
                 documents_requested_json, custom_message, status, email_error,
+                upload_token, token_expires_at,
                 sent_at, created_at, updated_at
             )
             VALUES
             (
                 :tid, :cae_id, :uid,
                 CAST(:docs AS jsonb), :msg, :status, :err,
+                :token, :expires,
                 NOW(), NOW(), NOW()
             )
         ");
 
         $stmt->execute([
-            'tid'    => $technicianId,
-            'cae_id' => $currentCaeId > 0 ? $currentCaeId : null,
-            'uid'    => (int) ($_SESSION['user']['id'] ?? 0),
-            'docs'   => json_encode($docsPayload, JSON_UNESCAPED_UNICODE),
-            'msg'    => $customMessage !== '' ? $customMessage : null,
-            'status' => $status,
-            'err'    => $emailError,
+            'tid'     => $technicianId,
+            'cae_id'  => $currentCaeId > 0 ? $currentCaeId : null,
+            'uid'     => (int) ($_SESSION['user']['id'] ?? 0),
+            'docs'    => json_encode($docsPayload, JSON_UNESCAPED_UNICODE),
+            'msg'     => $customMessage !== '' ? $customMessage : null,
+            'status'  => $status,
+            'err'     => $emailError,
+            'token'   => $uploadToken,
+            'expires' => $tokenExpires,
         ]);
 
         if ($sentOk) {
@@ -411,6 +469,7 @@ final class CaeController extends Controller
         }
 
         // Si no existe vigente o está caducado => crea nueva revisión actual
+        $supportingNeedsManual = false;
         $pdo->beginTransaction();
         try {
             $stmt = $pdo->prepare("
@@ -559,6 +618,22 @@ final class CaeController extends Controller
 
         $pdo = Database::connection();
 
+        $hasExpiresAt = false;
+        try {
+            $colStmt = $pdo->prepare("
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                AND table_name = 'cae_documents'
+                AND column_name = 'expires_at'
+                LIMIT 1
+            ");
+            $colStmt->execute();
+            $hasExpiresAt = (bool) $colStmt->fetchColumn();
+        } catch (\Throwable) {
+            $hasExpiresAt = false;
+        }
+
         // Valida CAE
         $stmt = $pdo->prepare("SELECT id FROM cae_records WHERE id = :id LIMIT 1");
         $stmt->execute(['id' => $caeId]);
@@ -576,6 +651,7 @@ final class CaeController extends Controller
         }
 
         $docTypeId = 0;
+        $docTypeName = '';
         $isMainFile = ($uploadMode === 'cae_main');
         if ($isMainFile) {
             // Tipo reservado para el archivo principal del CAE.
@@ -602,7 +678,7 @@ final class CaeController extends Controller
                 exit;
             }
             $stmt = $pdo->prepare("
-                SELECT id
+                SELECT id, name
                 FROM document_types
                 WHERE id = :id
                 AND scope = 'technician_cae'
@@ -611,9 +687,17 @@ final class CaeController extends Controller
                 LIMIT 1
             ");
             $stmt->execute(['id' => $documentTypeId]);
-            $docTypeId = (int) ($stmt->fetchColumn() ?: 0);
+            $docTypeRow = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+            $docTypeId = (int) ($docTypeRow['id'] ?? 0);
+            $docTypeName = (string) ($docTypeRow['name'] ?? '');
             if ($docTypeId <= 0) {
                 $this->flash('Tipo de documento no válido para documentos complementarios.', 'warning', 'Aviso');
+                header('Location: ' . $returnTo);
+                exit;
+            }
+
+            if (!$hasExpiresAt) {
+                $this->flash('Falta la migración de caducidad de documentos. Ejecuta 2026_05_11_cae_doc_expiry_and_auto_requests.sql.', 'danger', 'Error');
                 header('Location: ' . $returnTo);
                 exit;
             }
@@ -635,8 +719,28 @@ final class CaeController extends Controller
             exit;
         }
 
-        $relativePath = '/uploads/cae/' . $caeId . '/' . $finalName;
         $mime = (string) ($file['type'] ?? 'application/octet-stream');
+        $analysis = $isMainFile
+        ? [
+            'status' => 'approved',
+            'confidence' => 1.0,
+            'issue_date' => null,
+            'expires_at' => null,
+            'notes' => 'Archivo principal CAE',
+            'extracted_text' => '',
+        ]
+        : DocumentIntakeAiService::analyze($fullPath, $mime, $docTypeName);
+
+        $relativePath = '/uploads/cae/' . $caeId . '/' . $finalName;
+        $technicianId = 0;
+        $stmt = $pdo->prepare("SELECT technician_id FROM cae_records WHERE id = :id LIMIT 1");
+        $stmt->execute(['id' => $caeId]);
+        $technicianId = (int) ($stmt->fetchColumn() ?: 0);
+        if ($technicianId <= 0) {
+            $this->flash('No se pudo vincular el técnico para este CAE.', 'danger', 'Error');
+            header('Location: ' . $returnTo);
+            exit;
+        }
 
         $pdo->beginTransaction();
         try {
@@ -653,22 +757,111 @@ final class CaeController extends Controller
                 $stmt->execute(['cae_id' => $caeId]);
             }
 
-            $stmt = $pdo->prepare("
-                INSERT INTO cae_documents
-                (cae_record_id, document_type_id, original_filename, storage_path, mime_type, file_size, uploaded_by_user_id, uploaded_at, is_active, is_cae_file, created_at, updated_at)
-                VALUES
-                (:cae_id, :doc_type, :orig, :path, :mime, :size, :user_id, NOW(), TRUE, :is_cae_file, NOW(), NOW())
-            ");
-            $stmt->execute([
-                'cae_id' => $caeId,
-                'doc_type' => $docTypeId,
-                'orig' => $originalName,
-                'path' => $relativePath,
-                'mime' => $mime,
-                'size' => $size,
-                'user_id' => (int) ($_SESSION['user']['id'] ?? 0),
-                'is_cae_file' => ($isMainFile ? 'true' : 'false'),
-            ]);
+            if ($isMainFile) {
+                if ($hasExpiresAt) {
+                    $stmt = $pdo->prepare("
+                        INSERT INTO cae_documents
+                        (cae_record_id, document_type_id, original_filename, storage_path, mime_type, file_size, uploaded_by_user_id, uploaded_at, is_active, is_cae_file, expires_at, created_at, updated_at)
+                        VALUES
+                        (:cae_id, :doc_type, :orig, :path, :mime, :size, :user_id, NOW(), TRUE, :is_cae_file, :expires_at, NOW(), NOW())
+                    ");
+                    $stmt->execute([
+                        'cae_id' => $caeId,
+                        'doc_type' => $docTypeId,
+                        'orig' => $originalName,
+                        'path' => $relativePath,
+                        'mime' => $mime,
+                        'size' => $size,
+                        'user_id' => (int) ($_SESSION['user']['id'] ?? 0),
+                        'is_cae_file' => 'true',
+                        'expires_at' => null,
+                    ]);
+                } else {
+                    $stmt = $pdo->prepare("
+                        INSERT INTO cae_documents
+                        (cae_record_id, document_type_id, original_filename, storage_path, mime_type, file_size, uploaded_by_user_id, uploaded_at, is_active, is_cae_file, created_at, updated_at)
+                        VALUES
+                        (:cae_id, :doc_type, :orig, :path, :mime, :size, :user_id, NOW(), TRUE, :is_cae_file, NOW(), NOW())
+                    ");
+                    $stmt->execute([
+                        'cae_id' => $caeId,
+                        'doc_type' => $docTypeId,
+                        'orig' => $originalName,
+                        'path' => $relativePath,
+                        'mime' => $mime,
+                        'size' => $size,
+                        'user_id' => (int) ($_SESSION['user']['id'] ?? 0),
+                        'is_cae_file' => 'true',
+                    ]);
+                }
+            } else {
+                $aiStatus = (string) ($analysis['status'] ?? 'manual_review');
+                $confidence = (float) ($analysis['confidence'] ?? 0.0);
+                $issueDate = (string) ($analysis['issue_date'] ?? '');
+                $expiresAt = (string) ($analysis['expires_at'] ?? '');
+                $issueDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $issueDate) ? $issueDate : null;
+                $expiresAt = preg_match('/^\d{4}-\d{2}-\d{2}$/', $expiresAt) ? $expiresAt : null;
+                if ($expiresAt === null) {
+                    $expiresAt = $this->autoExpireFromIssue($docTypeName, $issueDate);
+                }
+
+                // Estado calculado por PHP (fechas reales), no por la IA
+                $aiStatus = DocumentIntakeAiService::calcStatus($expiresAt, $issueDate);
+
+                $needsManual = (
+                    $aiStatus === 'manual_review'   // no se pudieron leer las fechas
+                    || $expiresAt === null           // no hay fecha de caducidad calculable
+                );
+                $supportingNeedsManual = $needsManual;
+
+                $stmt = $pdo->prepare("
+                    INSERT INTO cae_document_intake
+                    (technician_id, cae_record_id, document_type_id, original_filename, storage_path, mime_type, file_size,
+                    source_channel, uploaded_by_user_id, extracted_text, ai_status, ai_confidence, ai_issue_date, ai_expires_at, ai_notes,
+                    status, requires_manual_review, created_at, updated_at)
+                    VALUES
+                    (:technician_id, :cae_record_id, :document_type_id, :original_filename, :storage_path, :mime_type, :file_size,
+                    'admin_upload', :uploaded_by_user_id, :extracted_text, :ai_status, :ai_confidence, :ai_issue_date, :ai_expires_at, :ai_notes,
+                    :status, :requires_manual_review, NOW(), NOW())
+                ");
+                $stmt->execute([
+                    'technician_id' => $technicianId,
+                    'cae_record_id' => $caeId,
+                    'document_type_id' => $docTypeId,
+                    'original_filename' => $originalName,
+                    'storage_path' => $relativePath,
+                    'mime_type' => $mime,
+                    'file_size' => $size,
+                    'uploaded_by_user_id' => (int) ($_SESSION['user']['id'] ?? 0),
+                    'extracted_text' => $extractedText !== '' ? $extractedText : null,
+                    'ai_status' => in_array($aiStatus, ['approved', 'in_review', 'rejected', 'manual_review'], true) ? $aiStatus : 'manual_review',
+                    'ai_confidence' => $confidence,
+                    'ai_issue_date' => $issueDate,
+                    'ai_expires_at' => $expiresAt,
+                    'ai_notes' => $notes !== '' ? $notes : null,
+                    'status' => $needsManual ? 'pending_manual' : 'approved_auto',
+                    'requires_manual_review' => $needsManual ? 'true' : 'false',
+                ]);
+
+                if (!$needsManual) {
+                    $stmt = $pdo->prepare("
+                        INSERT INTO cae_documents
+                        (cae_record_id, document_type_id, original_filename, storage_path, mime_type, file_size, uploaded_by_user_id, uploaded_at, is_active, is_cae_file, expires_at, created_at, updated_at)
+                        VALUES
+                        (:cae_id, :doc_type, :orig, :path, :mime, :size, :user_id, NOW(), TRUE, FALSE, :expires_at, NOW(), NOW())
+                    ");
+                    $stmt->execute([
+                        'cae_id' => $caeId,
+                        'doc_type' => $docTypeId,
+                        'orig' => $originalName,
+                        'path' => $relativePath,
+                        'mime' => $mime,
+                        'size' => $size,
+                        'user_id' => (int) ($_SESSION['user']['id'] ?? 0),
+                        'expires_at' => $expiresAt,
+                    ]);
+                }
+            }
 
             $pdo->commit();
         } catch (\Throwable $e) {
@@ -679,11 +872,162 @@ final class CaeController extends Controller
             exit;
         }
 
-        $this->flash(
-            $isMainFile ? 'Archivo CAE subido/sustituido correctamente.' : 'Documento complementario subido correctamente.',
-            'success',
-            'Correcto'
-        );
+        if ($isMainFile) {
+            $this->flash('Archivo CAE subido/sustituido correctamente.', 'success', 'Correcto');
+        } else {
+            $this->flash(
+                $supportingNeedsManual
+                    ? 'Documento recibido y enviado a revisión manual.'
+                    : 'Documento complementario aprobado automáticamente y guardado.',
+                $supportingNeedsManual ? 'warning' : 'success',
+                $supportingNeedsManual ? 'Revisión requerida' : 'Correcto'
+            );
+        }
+        header('Location: ' . $returnTo);
+        exit;
+    }
+
+    /** @param array<string, string> $params */
+    public function approveIntake(array $params = []): void
+    {
+        $this->assertAreaAccess();
+        $this->requireAdmin();
+
+        $intakeId = (int) ($params['id'] ?? 0);
+        $returnTo = (string) ($_POST['return_to'] ?? ($this->areaBaseUrl() . '/tecnicos'));
+        $manualExpiresAt = trim((string) ($_POST['manual_expires_at'] ?? ''));
+
+        if ($intakeId <= 0) {
+            $this->flash('Documento intake no válido.', 'danger', 'Error');
+            header('Location: ' . $returnTo);
+            exit;
+        }
+        if ($manualExpiresAt !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $manualExpiresAt)) {
+            $this->flash('La fecha de caducidad manual no es válida.', 'warning', 'Aviso');
+            header('Location: ' . $returnTo);
+            exit;
+        }
+
+        $pdo = Database::connection();
+        $stmt = $pdo->prepare("
+            SELECT id, technician_id, cae_record_id, document_type_id, original_filename, storage_path, mime_type, file_size,
+                   ai_issue_date, ai_expires_at, status
+            FROM cae_document_intake
+            WHERE id = :id
+            LIMIT 1
+        ");
+        $stmt->execute(['id' => $intakeId]);
+        $intake = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$intake) {
+            $this->flash('Registro de revisión no encontrado.', 'danger', 'Error');
+            header('Location: ' . $returnTo);
+            exit;
+        }
+        if ((string) ($intake['status'] ?? '') === 'rejected') {
+            $this->flash('No se puede aprobar un intake ya rechazado.', 'warning', 'Aviso');
+            header('Location: ' . $returnTo);
+            exit;
+        }
+
+        $expiresAt = $manualExpiresAt !== '' ? $manualExpiresAt : (string) ($intake['ai_expires_at'] ?? '');
+        if ($expiresAt === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $expiresAt)) {
+            $expiresAt = $this->autoExpireFromIssue(
+                (string) ($this->resolveDocTypeName($pdo, (int) ($intake['document_type_id'] ?? 0))),
+                (string) ($intake['ai_issue_date'] ?? '')
+            );
+        }
+        if ($expiresAt === null) {
+            $this->flash('No se pudo determinar la fecha de caducidad. Indícala manualmente.', 'warning', 'Aviso');
+            header('Location: ' . $returnTo);
+            exit;
+        }
+
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare("
+                INSERT INTO cae_documents
+                (cae_record_id, document_type_id, original_filename, storage_path, mime_type, file_size, uploaded_by_user_id, uploaded_at, is_active, is_cae_file, expires_at, created_at, updated_at)
+                VALUES
+                (:cae_id, :doc_type, :orig, :path, :mime, :size, :user_id, NOW(), TRUE, FALSE, :expires_at, NOW(), NOW())
+            ");
+            $stmt->execute([
+                'cae_id' => (int) ($intake['cae_record_id'] ?? 0),
+                'doc_type' => (int) ($intake['document_type_id'] ?? 0),
+                'orig' => (string) ($intake['original_filename'] ?? ''),
+                'path' => (string) ($intake['storage_path'] ?? ''),
+                'mime' => (string) ($intake['mime_type'] ?? 'application/octet-stream'),
+                'size' => (int) ($intake['file_size'] ?? 0),
+                'user_id' => (int) ($_SESSION['user']['id'] ?? 0),
+                'expires_at' => $expiresAt,
+            ]);
+
+            $stmt = $pdo->prepare("
+                UPDATE cae_document_intake
+                SET status = 'approved_manual',
+                    requires_manual_review = FALSE,
+                    ai_expires_at = :expires_at,
+                    reviewed_by_user_id = :uid,
+                    reviewed_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = :id
+            ");
+            $stmt->execute([
+                'expires_at' => $expiresAt,
+                'uid' => (int) ($_SESSION['user']['id'] ?? 0),
+                'id' => $intakeId,
+            ]);
+
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            $this->flash('No se pudo aprobar el documento pendiente: ' . $e->getMessage(), 'danger', 'Error');
+            header('Location: ' . $returnTo);
+            exit;
+        }
+
+        $this->flash('Documento pendiente aprobado y publicado en documentos CAE.', 'success', 'Correcto');
+        header('Location: ' . $returnTo);
+        exit;
+    }
+
+    /** @param array<string, string> $params */
+    public function rejectIntake(array $params = []): void
+    {
+        $this->assertAreaAccess();
+        $this->requireAdmin();
+
+        $intakeId = (int) ($params['id'] ?? 0);
+        $returnTo = (string) ($_POST['return_to'] ?? ($this->areaBaseUrl() . '/tecnicos'));
+
+        if ($intakeId <= 0) {
+            $this->flash('Documento intake no válido.', 'danger', 'Error');
+            header('Location: ' . $returnTo);
+            exit;
+        }
+
+        $pdo = Database::connection();
+        $stmt = $pdo->prepare("
+            UPDATE cae_document_intake
+            SET status = 'rejected',
+                requires_manual_review = FALSE,
+                reviewed_by_user_id = :uid,
+                reviewed_at = NOW(),
+                updated_at = NOW()
+            WHERE id = :id
+              AND status = 'pending_manual'
+        ");
+        $stmt->execute([
+            'id' => $intakeId,
+            'uid' => (int) ($_SESSION['user']['id'] ?? 0),
+        ]);
+
+        if ($stmt->rowCount() > 0) {
+            $this->flash('Documento pendiente rechazado.', 'success', 'Correcto');
+        } else {
+            $this->flash('No se pudo rechazar (quizá ya fue revisado).', 'warning', 'Aviso');
+        }
+
         header('Location: ' . $returnTo);
         exit;
     }
@@ -832,6 +1176,38 @@ final class CaeController extends Controller
         $stmt->execute(['id' => $userId]);
 
         return (int) ($stmt->fetchColumn() ?: 0);
+    }
+
+    private function autoExpireFromIssue(string $docTypeName, ?string $issueDate): ?string
+    {
+        if ($issueDate === null || $issueDate === '') return null;
+
+        return match ($docTypeName) {
+            'Certificado de estar al corriente con Hacienda',
+            'Certificado de estar al corriente con Seguridad Social'
+                => date('Y-m-d', strtotime($issueDate . ' +6 months')),
+
+            'Póliza de Responsabilidad Civil'
+                => date('Y-m-d', strtotime($issueDate . ' +1 year')),
+
+            // El certificado SPA tiene fecha fin explícita en el propio documento.
+            // Sin fecha explícita de la IA, no se puede calcular automáticamente.
+            'Certificado de Prevención de Riesgos Laborales'
+                => null,
+
+            default => null,
+        };
+    }
+
+    private function resolveDocTypeName(PDO $pdo, int $docTypeId): ?string
+    {
+        if ($docTypeId <= 0) {
+            return null;
+        }
+        $stmt = $pdo->prepare("SELECT name FROM document_types WHERE id = :id LIMIT 1");
+        $stmt->execute(['id' => $docTypeId]);
+        $name = $stmt->fetchColumn();
+        return is_string($name) && $name !== '' ? $name : null;
     }
 
     private function requireAdmin(): void

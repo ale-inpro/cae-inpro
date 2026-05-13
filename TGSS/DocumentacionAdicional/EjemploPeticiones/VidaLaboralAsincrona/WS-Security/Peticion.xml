@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><soapenv:Header><ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">
+<ds:SignedInfo>
+<ds:CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>
+<ds:SignatureMethod Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha1"/>
+<ds:Reference URI="#id-424CD6FAA2BC0726DE15338813180931">
+<ds:Transforms>
+<ds:Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>
+</ds:Transforms>
+<ds:DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha1"/>
+<ds:DigestValue>GqtMyIxmQGmlHD8oYSfLCOrxZks=</ds:DigestValue>
+</ds:Reference>
+</ds:SignedInfo>
+<ds:SignatureValue>
+Gd/WTS5jju4BC+KZ3heeigzMWvJ/nbj1yXb8gYLvlKu92sZYPp+6AArV5T/5w4bTF7bRrl4AZyNf
+H+zK6TyWREAYO0fd9ge/Vl0dGg5aJ1Je61D3GCyBtxfipEn34luWdUIlZHIah+uNu6IIozhI/IYW
+Fx7lITld2g3WM0whnrYtb2cFCmiKlfFIQ4jRLJOn8G5qv4FNY/aTWWVZQ04fUy3Uf43bjSli0MYW
+2HwnXOFw1N61h4XxdACd3e88j8KLsstAp+VRzsbtctl0k7UiSm/JlV3YZyjAgv44EZTLeqP2ZiDq
+fo+eMEV/ApCFKR0kjYsg0GnHK7YFb2FK/Q7vTw==
+</ds:SignatureValue>
+<ds:KeyInfo>
+<ds:X509Data>
+<ds:X509Certificate>
+MIIHMjCCBhqgAwIBAgIIZCfBQxI+TKowDQYJKoZIhvcNAQEFBQAwgYYxCzAJBgNVBAYTAkVTMTMw
+MQYDVQQKDCpDT05TT1JDSSBBRE1JTklTVFJBQ0lPIE9CRVJUQSBERSBDQVRBTFVOWUExKjAoBgNV
+BAsMIVNlcnZlaXMgUMO6YmxpY3MgZGUgQ2VydGlmaWNhY2nDszEWMBQGA1UEAwwNRUMtQ2l1dGFk
+YW5pYTAeFw0xNTAyMTExMDIzMTBaFw0xOTAyMTExMDIzMTBaMIHRMQswCQYDVQQGEwJFUzEOMAwG
+A1UECwwFSURDQVQxNDAyBgNVBAsMK1ZlZ2V1IGh0dHBzOi8vd3d3LmFvYy5jYXQvQ0FUQ2VydC9S
+ZWd1bGFjaW8xHjAcBgNVBAQMFWRlIGxhIFBlw6dhIGRlIFByb3ZlczEYMBYGA1UEKgwPUGVyc29u
+YSBGw61zaWNhMRIwEAYDVQQFEwkwMDAwMDAwMFQxLjAsBgNVBAMMJVBlcnNvbmEgRsOtc2ljYSBk
+ZSBsYSBQZcOnYSBkZSBQcm92ZXMwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCoMvRH
+DE00ukKYnLXYSTDVvJ9vD8RdBjTikpc7lsznI+40cxrsmh2dWu1igy/gpGyyShJE/JZEGOabiTEc
+x9shOcXYXgecglNcqh4bfFK0VmgqrYmytfZHO9xXOjFr/x04GpV6nL+r0vxDk10f/5vr/IkTrBCr
+WMdeg6pbupdsFuPTGkwo5wa2W+U4Sdl54+hT4NI0sr03LChNz1+TAvcwAvlHcXokXoHomi3NQ90N
++GCgw86CcAwunUt55+zTZMKS+zEUu0158Pmz18xinWYd6cus5zFTfffMUKpHroZSRv2i1zBU0wNk
+H58Du3wHY9eoYAi03TRnuxujiXDvNX/xAgMBAAGjggNVMIIDUTAtBgNVHQkEJjAkMBAGCCsGAQUF
+BwkFMQQTAkVTMBAGCCsGAQUFBwkEMQQTAkVTMHQGCCsGAQUFBwEBBGgwZjA/BggrBgEFBQcwAoYz
+aHR0cDovL3d3dy5jYXRjZXJ0LmNhdC9kZXNjYXJyZWdhL2VjLWNpdXRhZGFuaWEuY3J0MCMGCCsG
+AQUFBzABhhdodHRwOi8vb2NzcC5jYXRjZXJ0LmNhdDAdBgNVHQ4EFgQUW8xVZwjnuCmuVFA5WOYW
+hdiQWqowDAYDVR0TAQH/BAIwADAfBgNVHSMEGDAWgBQLaFk+h8ijFRrgQIIiX58dssU3FTAlBggr
+BgEFBQcBAwQZMBcwCAYGBACORgEBMAsGBgQAjkYBAwIBDzCCAQsGA1UdIASCAQIwgf8wgfwGDCsG
+AQQB9XgBAwFWATCB6zAxBggrBgEFBQcCARYlaHR0cHM6Ly93d3cuYW9jLmNhdC9DQVRDZXJ0L1Jl
+Z3VsYWNpbzCBtQYIKwYBBQUHAgIwgagMgaVDZXJ0aWZpY2F0IHBlcnNvbmFsIHJlY29uZWd1dCBk
+4oCZaWRlbnRpZmljYWNpw7MsIHhpZnJhdGdlIGkgc2lnbmF0dXJhIGF2YW7Dp2FkYSwgZGUgY2xh
+c3NlIDIuIEFkcmXDp2EgaSBOSUYgZGVsIHByZXN0YWRvcjogVmlhIExhaWV0YW5hIDI2IDA4MDAz
+IEJhcmNlbG9uYSBRMDgwMTE3NUEwPwYDVR0fBDgwNjA0oDKgMIYuaHR0cDovL2Vwc2NkLmNhdGNl
+cnQubmV0L2NybC9lYy1jaXV0YWRhbmlhLmNybDAOBgNVHQ8BAf8EBAMCA/gwHQYDVR0lBBYwFAYI
+KwYBBQUHAwIGCCsGAQUFBwMEMIG1BgNVHREEga0wgaqBC3NjZEBhb2MuY2F0pIGaMIGXMQ4wDAYD
+VQQLDAVJRENBVDE0MDIGA1UECgwrQ29uc29yY2kgQWRtaW5pc3RyYWNpw7MgT2JlcnRhIGRlIENh
+dGFsdW55YTELMAkGA1UEBhMCRVMxEjAQBgNVBAUTCTAwMDAwMDAwVDEuMCwGA1UEAwwlUGVyc29u
+YSBGw61zaWNhIGRlIGxhIFBlw6dhIGRlIFByb3ZlczANBgkqhkiG9w0BAQUFAAOCAQEAwZtxKMOA
+BH6subqErQTLme1f00FG3KpdE57hO/vFg5sId0HVt6mY5IT+ILmOboiNJAP0LeF18+5MnxGu33MQ
+u94/l8j03PNNZDTDaVmGGzmUJvZWL9DVvc2pwt61X9q+xH4H5QXXPfypry0NqnHunZdQr3BhF8WF
+QcMdkpRxaHwjDtptkh9OBF/VbXDt0K9sgKPEmxeNen2Xsahoh4KOTQuH6SKbLn0lD1ABvFKDDo5/
+EMlSvF4QvSchZz9bSnjtm+RY4PFySzhHVdEaCAW1dGlHoFrqper2zq6T5lDhnAjd9O9koNiTDFxe
+mi+zGd7vxce08M0ismjtWt6QVzUgZw==
+</ds:X509Certificate>
+</ds:X509Data>
+<ds:KeyValue>
+<ds:RSAKeyValue>
+<ds:Modulus>
+qDL0RwxNNLpCmJy12Ekw1byfbw/EXQY04pKXO5bM5yPuNHMa7JodnVrtYoMv4KRsskoSRPyWRBjm
+m4kxHMfbITnF2F4HnIJTXKoeG3xStFZoKq2JsrX2RzvcVzoxa/8dOBqVepy/q9L8Q5NdH/+b6/yJ
+E6wQq1jHXoOqW7qXbBbj0xpMKOcGtlvlOEnZeePoU+DSNLK9NywoTc9fkwL3MAL5R3F6JF6B6Jot
+zUPdDfhgoMPOgnAMLp1Leefs02TCkvsxFLtNefD5s9fMYp1mHenLrOcxU333zFCqR66GUkb9otcw
+VNMDZB+fA7t8B2PXqGAItN00Z7sbo4lw7zV/8Q==
+</ds:Modulus>
+<ds:Exponent>AQAB</ds:Exponent>
+</ds:RSAKeyValue>
+</ds:KeyValue>
+</ds:KeyInfo>
+</ds:Signature></soapenv:Header><soapenv:Body Id="id-424CD6FAA2BC0726DE15338813180931">
+<Peticion xmlns="http://intermediacion.redsara.es/scsp/esquemas/V3/peticion">
+	<Atributos>
+		<IdPeticion>0340_SPP_QA_MH_TGSVLA_0047</IdPeticion>
+		<NumElementos>2</NumElementos>
+		<TimeStamp>2018-08-10T08:08:37.418+02:00</TimeStamp>
+		<CodigoCertificado>SVDTGSSVIDALABORALWS01</CodigoCertificado>
+	</Atributos>
+	<Solicitudes>
+		<SolicitudTransmision>
+			<DatosGenericos>
+				<Emisor>
+					<NifEmisor>Q2827003A</NifEmisor>
+					<NombreEmisor>Seguridad Social</NombreEmisor>
+				</Emisor>
+				<Solicitante>
+					<IdentificadorSolicitante>S2833002E</IdentificadorSolicitante>
+					<NombreSolicitante>MINISTERIO DE HACIENDA Y AP</NombreSolicitante>
+					<CodigoUnidadTramitadora>EA0011744</CodigoUnidadTramitadora>
+					<UnidadTramitadora>SG COORD ESTUDIOS E IMPULSO ADM ELECLT(MINHAP)</UnidadTramitadora>
+					<Procedimiento>
+						<CodProcedimiento>SVDR_20090505_000005</CodProcedimiento>
+						<NombreProcedimiento>PRUEBAS DE INTEGRACION VIDA LABORAL</NombreProcedimiento>
+					</Procedimiento>
+					<Finalidad>PRUEBAS DE INTEGRACION VIDA LABORAL</Finalidad>
+					<Consentimiento>Si</Consentimiento>
+					<Funcionario>
+						<NombreCompletoFuncionario>JUAN ESPAÑOL ESPAÑOL</NombreCompletoFuncionario>
+						<NifFuncionario>99999999R</NifFuncionario>
+					</Funcionario>
+					<IdExpediente>EXP/16122012</IdExpediente>
+				</Solicitante>
+				<Titular>
+					<TipoDocumentacion>DNI</TipoDocumentacion>
+					<Documentacion>73800632A</Documentacion>
+				</Titular>
+				<Transmision>
+					<CodigoCertificado>SVDTGSSVIDALABORALWS01</CodigoCertificado>
+					<IdSolicitud>0340_SPP_QA_MH_TGSVLA_00470001</IdSolicitud>
+				</Transmision>
+			</DatosGenericos>
+		</SolicitudTransmision>
+		<SolicitudTransmision>
+			<DatosGenericos>
+				<Emisor>
+					<NifEmisor>Q2827003A</NifEmisor>
+					<NombreEmisor>Seguridad Social</NombreEmisor>
+				</Emisor>
+				<Solicitante>
+					<IdentificadorSolicitante>S2833002E</IdentificadorSolicitante>
+					<NombreSolicitante>MINISTERIO DE HACIENDA Y AP</NombreSolicitante>
+					<CodigoUnidadTramitadora>EA0011744</CodigoUnidadTramitadora>
+					<UnidadTramitadora>SG COORD ESTUDIOS E IMPULSO ADM ELECLT(MINHAP)</UnidadTramitadora>
+					<Procedimiento>
+						<CodProcedimiento>SVDR_20090505_000005</CodProcedimiento>
+						<NombreProcedimiento>PRUEBAS DE INTEGRACION VIDA LABORAL</NombreProcedimiento>
+					</Procedimiento>
+					<Finalidad>PRUEBAS DE INTEGRACION VIDA LABORAL</Finalidad>
+					<Consentimiento>Si</Consentimiento>
+					<Funcionario>
+						<NombreCompletoFuncionario>JUAN ESPAÑOL ESPAÑOL</NombreCompletoFuncionario>
+						<NifFuncionario>99999999R</NifFuncionario>
+					</Funcionario>
+					<IdExpediente>EXP/16122012</IdExpediente>
+				</Solicitante>
+				<Titular>
+					<TipoDocumentacion>DNI</TipoDocumentacion>
+					<Documentacion>73800632A</Documentacion>
+				</Titular>
+				<Transmision>
+					<CodigoCertificado>SVDTGSSVIDALABORALWS01</CodigoCertificado>
+					<IdSolicitud>0340_SPP_QA_MH_TGSVLA_00470002</IdSolicitud>
+				</Transmision>
+			</DatosGenericos>
+		</SolicitudTransmision>
+	</Solicitudes>
+</Peticion></soapenv:Body></soapenv:Envelope>

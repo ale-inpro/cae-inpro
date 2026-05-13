@@ -10,6 +10,7 @@ use App\Http\Controllers\RiskReportController;
 use App\Http\Controllers\TechnicianController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\CaeAiController;
+use App\Http\Controllers\TechnicianPortalController;
 
 return [
     'routes' => [
@@ -98,5 +99,11 @@ return [
         ['method' => 'POST', 'path' => '/admin/tecnicos/{id}/cae/ia/generate', 'action' => [CaeAiController::class, 'generate']],
         ['method' => 'POST', 'path' => '/admin/tecnicos/{id}/cae/ia/save',     'action' => [CaeAiController::class, 'save']],
         ['method' => 'GET',  'path' => '/admin/cae/ia/{generationId}/download', 'action' => [CaeAiController::class, 'download']],
+
+        // Portal público para técnicos (sin autenticación)
+        ['method' => 'GET',  'path' => '/portal/{token}',        'action' => [TechnicianPortalController::class, 'show']],
+        ['method' => 'POST', 'path' => '/portal/{token}/upload',  'action' => [TechnicianPortalController::class, 'upload']],
+        ['method' => 'POST', 'path' => '/admin/cae/intake/{id}/approve', 'action' => [CaeController::class, 'approveIntake']],
+        ['method' => 'POST', 'path' => '/admin/cae/intake/{id}/reject', 'action' => [CaeController::class, 'rejectIntake']],
     ],
 ];

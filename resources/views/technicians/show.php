@@ -5,6 +5,7 @@ $name = trim(((string) ($t['first_name'] ?? '')) . ' ' . ((string) ($t['last_nam
 $current = $currentCae ?? null;
 $history = $caeHistory ?? [];
 $docs = $caeDocuments ?? [];
+$pendingIntake = $pendingIntakeDocs ?? [];
 $isAdmin = (($area ?? 'gestor') === 'admin');
 $currentUrl = $ab . '/tecnicos/' . (int) ($t['id'] ?? 0) . '#pane-info';
 $editUrl = $ab . '/tecnicos/' . (int) ($t['id'] ?? 0) . '/edit?return_to=' . urlencode($currentUrl);
@@ -171,25 +172,144 @@ $statusBadge = static function (string $status): string {
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <div class="col-md-5">
+                        <div class="col-md-6">
                             <input type="file" name="document_file" class="form-control" required>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <button class="btn btn-success w-100" type="submit"><i class="bi bi-upload"></i></button>
                         </div>
                     </form>
                 </div>
             </div>
         <?php endif; ?>
+
+        <?php if ($isAdmin && !empty($pendingIntake)): ?>
+            <div class="subpanel mb-3 border-warning">
+                <div class="subpanel-h d-flex align-items-center justify-content-between">
+                    <span><i class="bi bi-hourglass-split me-2"></i>Documentos pendientes de revisión manual</span>
+                    <span class="badge text-bg-warning text-dark"><?= (int) count($pendingIntake) ?></span>
+                </div>
+                <div class="subpanel-b">
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0 table-mobile-cards">
+                            <thead><tr><th>Documento</th><th>Archivo</th><th>IA</th><th>Acciones</th></tr></thead>
+                            <tbody>
+                            <?php foreach ($pendingIntake as $p): ?>
+                                <tr>
+                                    <td data-label="Documento"><?= htmlspecialchars((string) ($p['document_name'] ?? '-')) ?></td>
+                                    <td data-label="Archivo">
+                                        <div class="fw-semibold"><?= htmlspecialchars((string) ($p['original_filename'] ?? '-')) ?></div>
+                                        <div class="small text-muted">
+                                            <?php if (!empty($p['ai_notes'])): ?>
+                                                <?= htmlspecialchars((string) $p['ai_notes']) ?>
+                                            <?php else: ?>
+                                                Pendiente de validación manual.
+                                            <?php endif; ?>
+                                        </div>
+                                    </td>
+                                    <td data-label="IA">
+                                        <div class="small">
+                                            Estado IA: <strong><?= htmlspecialchars((string) ($p['ai_status'] ?? 'manual_review')) ?></strong><br>
+                                            Conf.: <strong><?= htmlspecialchars((string) ($p['ai_confidence'] ?? '0')) ?></strong><br>
+                                            Caducidad IA: <strong><?= htmlspecialchars((string) ($p['ai_expires_at'] ?? 'N/D')) ?></strong>
+                                        </div>
+                                    </td>
+                                    <td data-label="Acciones">
+                                        <div class="table-actions">
+                                            <?php if (!empty($p['storage_path'])): ?>
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-sm btn-outline-secondary"
+                                                    data-file-preview
+                                                    data-file-preview-url="<?= htmlspecialchars((string) (($baseUrl ?? '') . ($p['storage_path'] ?? ''))) ?>"
+                                                    data-file-preview-name="<?= htmlspecialchars((string) ($p['original_filename'] ?? 'Documento')) ?>"
+                                                    title="Ver"
+                                                ><i class="bi bi-eye"></i></button>
+                                            <?php endif; ?>
+                                            <?php
+                                                $hasAiExpiry = !empty(trim((string) ($p['ai_expires_at'] ?? '')));
+                                                $aiExpiryVal = $hasAiExpiry ? htmlspecialchars((string) $p['ai_expires_at']) : '';
+                                                $docNameForExpiry = (string) ($p['document_name'] ?? '');
+                                                // El SPA no tiene regla automática: siempre exigir fecha
+                                                $needsForcedDate = (!$hasAiExpiry || str_contains($docNameForExpiry, 'Prevención'));
+                                            ?>
+                                            <form method="post" action="<?= $ab ?>/cae/intake/<?= (int) ($p['id'] ?? 0) ?>/approve" class="d-flex align-items-center gap-1 flex-wrap">
+                                                <input type="hidden" name="return_to" value="<?= $ab ?>/tecnicos/<?= (int) ($t['id'] ?? 0) ?>#pane-docs">
+                                                <div>
+                                                    <input
+                                                        type="date"
+                                                        name="manual_expires_at"
+                                                        class="form-control form-control-sm"
+                                                        value="<?= $aiExpiryVal ?>"
+                                                        title="Fecha de caducidad<?= $needsForcedDate ? ' (obligatoria)' : ' (IA: ' . $aiExpiryVal . ')' ?>"
+                                                        <?= $needsForcedDate ? 'required' : '' ?>
+                                                    >
+                                                    <?php if ($needsForcedDate): ?>
+                                                        <div class="text-danger" style="font-size:0.7rem">Obligatoria</div>
+                                                    <?php elseif ($hasAiExpiry): ?>
+                                                        <div class="text-muted" style="font-size:0.7rem">IA: <?= $aiExpiryVal ?></div>
+                                                    <?php endif; ?>
+                                                </div>
+                                                <button class="btn btn-sm btn-success" type="submit" title="Aprobar"><i class="bi bi-check2"></i></button>
+                                            </form>
+                                            <form method="post" action="<?= $ab ?>/cae/intake/<?= (int) ($p['id'] ?? 0) ?>/reject" data-confirm="¿Rechazar este documento pendiente?">
+                                                <input type="hidden" name="return_to" value="<?= $ab ?>/tecnicos/<?= (int) ($t['id'] ?? 0) ?>#pane-docs">
+                                                <button class="btn btn-sm btn-outline-danger" type="submit" title="Rechazar"><i class="bi bi-x-lg"></i></button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
+
         <div class="table-responsive">
             <table class="table table-sm align-middle mb-0 table-mobile-cards">
-                <thead><tr><th>Documento</th><th>Archivo</th><th>Subida</th><th></th></tr></thead>
+                <thead><tr><th>Documento</th><th>Archivo</th><th>Caduca</th><th></th></tr></thead>
                 <tbody>
                 <?php foreach ($docs as $d): ?>
                     <tr>
                         <td data-label="Documento"><?= htmlspecialchars((string) ($d['document_name'] ?? '-')) ?></td>
                         <td data-label="Archivo"><?= htmlspecialchars((string) ($d['original_filename'] ?? '-')) ?></td>
-                        <td data-label="Subida"><?= htmlspecialchars((string) ($d['uploaded_at'] ?? '-')) ?></td>
+                        <?php
+                            $expRaw = trim((string) ($d['expires_at'] ?? ''));
+                            $badgeClass = 'text-bg-secondary';
+                            $badgeText  = 'Sin fecha';
+
+                            if ($expRaw !== '') {
+                                $todayTs = strtotime(date('Y-m-d'));
+                                $expTs   = strtotime($expRaw);
+
+                                if ($expTs !== false) {
+                                    $daysLeft = (int) floor(($expTs - $todayTs) / 86400);
+
+                                    if ($daysLeft < 0) {
+                                        $badgeClass = 'text-bg-danger';
+                                        $badgeText  = 'Caducado';
+                                    } elseif ($daysLeft <= 15) {
+                                        $badgeClass = 'text-bg-warning text-dark';
+                                        $badgeText  = 'Próximo (' . $daysLeft . 'd)';
+                                    } else {
+                                        $badgeClass = 'text-bg-success';
+                                        $badgeText  = 'Vigente';
+                                    }
+                                }
+                            }
+                            ?>
+                            <td data-label="Caduca">
+                                <?php if ($expRaw !== ''): ?>
+                                    <div class="d-flex flex-column gap-1">
+                                        <span><?= htmlspecialchars($expRaw) ?></span>
+                                        <span class="badge <?= $badgeClass ?>"><?= htmlspecialchars($badgeText) ?></span>
+                                    </div>
+                                <?php else: ?>
+                                    <span class="badge <?= $badgeClass ?>"><?= htmlspecialchars($badgeText) ?></span>
+                                <?php endif; ?>
+                            </td>
                         <td data-label="Acciones" class="text-end">
                             <div class="table-actions">
                                 <?php if (!empty($d['storage_path'])): ?>

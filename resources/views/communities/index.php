@@ -2,6 +2,17 @@
 $ab = htmlspecialchars($areaBaseUrl ?? '/cae-inpro/public/gestor');
 $role = (string) ($area ?? 'gestor');
 $items = $communities ?? [];
+$focus = (string) ($focus ?? '');
+$focusLabel = match ($focus) {
+    'rl_pending' => 'Filtro activo: Solicitudes RL pendientes',
+    'rl_overdue' => 'Filtro activo: Solicitudes RL atrasadas',
+    default      => '',
+};
+
+$focusOptions = [
+    ['key' => 'rl_pending', 'label' => 'RL pendientes'],
+    ['key' => 'rl_overdue', 'label' => 'RL atrasadas'],
+];
 
 $badgeClass = static function (string $status): string {
     return match ($status) {
@@ -32,6 +43,26 @@ $label = static function (string $status): string {
         <a class="btn btn-success" href="<?= $ab ?>/comunidades/create">Nueva comunidad</a>
     <?php endif; ?>
 </div>
+
+<?php if ($role === 'admin'): ?>
+    <div class="filter-chips mb-3">
+        <a href="<?= $ab ?>/comunidades?focus=all" class="filter-chip <?= $focus === '' ? 'active' : '' ?>">
+            <i class="bi bi-grid me-1"></i> Todas
+        </a>
+        <?php foreach ($focusOptions as $opt): ?>
+            <a href="<?= $ab ?>/comunidades?focus=<?= urlencode($opt['key']) ?>" class="filter-chip <?= $focus === $opt['key'] ? 'active' : '' ?>">
+                <?= htmlspecialchars($opt['label']) ?>
+            </a>
+        <?php endforeach; ?>
+    </div>
+<?php endif; ?>
+
+<?php if ($focusLabel !== ''): ?>
+    <div class="alert alert-info d-flex justify-content-between align-items-center py-2">
+        <span><i class="bi bi-funnel me-1"></i><?= htmlspecialchars($focusLabel) ?></span>
+        <a class="btn btn-sm btn-outline-secondary" href="<?= $ab ?>/comunidades">Quitar filtro</a>
+    </div>
+<?php endif; ?>
 
 <div class="card border-0 shadow-sm">
     <div class="card-body">

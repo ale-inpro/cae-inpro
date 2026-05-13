@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Header><ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">
+<ds:SignedInfo>
+<ds:CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>
+<ds:SignatureMethod Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha1"/>
+<ds:Reference URI="#id-D718FCDC4E58DA1FB915246509498143534">
+<ds:Transforms>
+<ds:Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>
+</ds:Transforms>
+<ds:DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha1"/>
+<ds:DigestValue>OuqlG6tc64/KclRV2rrgthXSEYY=</ds:DigestValue>
+</ds:Reference>
+</ds:SignedInfo>
+<ds:SignatureValue>
+DKc7bXOvjcckgN7cNi90xgM9pfd4YiK2VMipAjrFzpGX0dJkoXhlVAeQhIEzCOfFbwIM7py+Jqt8
+JOm0smtBE+5LhdxurSmwIIXUrQiiQZZ0d3VbG7NZWyFLwJu5/XDjKPJWN2VKRsyqAPPBwWp0j2Iz
+LvNtc9Z55QbtnGIEZhywBzm1VQ8782GeGXKT7UUYXEcBXYEYgsPNKwNDKSOChz2HX2vHsd8idZhh
+UKIKfWzlmgbIrpVj45kussXzFBeVUjRnN2T7F4SAb5fgdl7b5+sQp3tShNAtaLT+rGFVe5pYRvrw
+fpL1NkepZaqaBa40m980IRhcURsYh3Rw65d8TA==
+</ds:SignatureValue>
+<ds:KeyInfo>
+<ds:X509Data>
+<ds:X509Certificate>
+MIIGJTCCBQ2gAwIBAgIQMKphM3IuYCRWpfwxJ4WOXzANBgkqhkiG9w0BAQsFADBHMQswCQYDVQQG
+EwJFUzERMA8GA1UECgwIRk5NVC1SQ00xJTAjBgNVBAsMHEFDIENvbXBvbmVudGVzIEluZm9ybcOh
+dGljb3MwHhcNMTYwMTI1MTA0MjU3WhcNMTkwMTI1MTA0MjU2WjCB7DELMAkGA1UEBhMCRVMxDzAN
+BgNVBAcMBk1BRFJJRDE8MDoGA1UECgwzTUlOSVNURVJJTyBERSBIQUNJRU5EQSBZIEFETUlOSVNU
+UkFDSU9ORVMgUMOaQkxJQ0FTMUswSQYDVQQLDEJESVJFQ0NJw5NOIERFIFRFQ05PTE9Hw41BUyBE
+RSBMQSBJTkZPUk1BQ0nDk04gWSBMQVMgQ09NVU5JQ0FDSU9ORVMxEjAQBgNVBAUTCVMyODMzMDAy
+RTEtMCsGA1UEAwwkUExBVEFGT1JNQSBERSBJTlRFUk1FRElBQ0lPTi1QUlVFQkFTMIIBIjANBgkq
+hkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAhicqzbei51EUQMAbsxFCoFtDmZtS0mDyBWy0V3tRotRk
+rKcXZeJCdxdLTbFW98wsqsbSn8Bm6oMHRAKAQNmmjkyooGYeM/NGlhIOiZqbZTFoVelvNTj3IMlA
+hcU8QOn8xsDmM9WAgcB2x4mcJ7gPpg4rOO6DkQ6hZkrMiiLYv4QZ8n46Kxzoz9xbXJgcZrVbmyUd
+/qQpMwJpkb7txOdaRM+phsgDrGnJ+MaADRUeMZb5hddIqPM7g3WNPtT/K17UUjlDEKHj6fp+UbkZ
+w30gT8Cq+7qODbh1eWnij32jLAmXlrYsEkBctpf8S7WFHJjbhaw33HImlmr/VfpEjbiWtQIDAQAB
+o4ICZTCCAmEwCQYDVR0TBAIwADCBgQYIKwYBBQUHAQEEdTBzMDsGCCsGAQUFBzABhi9odHRwOi8v
+b2NzcGNvbXAuY2VydC5mbm10LmVzL29jc3AvT2NzcFJlc3BvbmRlcjA0BggrBgEFBQcwAoYoaHR0
+cDovL3d3dy5jZXJ0LmZubXQuZXMvY2VydHMvQUNDT01QLmNydDBEBgNVHSAEPTA7MDkGCisGAQQB
+rGYDCQIwKzApBggrBgEFBQcCARYdaHR0cDovL3d3dy5jZXJ0LmZubXQuZXMvZHBjcy8wQgYDVR0R
+BDswOaQ3MDUxMzAxBgkrBgEEAaxmAQgMJFBMQVRBRk9STUEgREUgSU5URVJNRURJQUNJT04tUFJV
+RUJBUzATBgNVHSUEDDAKBggrBgEFBQcDAjAOBgNVHQ8BAf8EBAMCBLAwHQYDVR0OBBYEFDmySdNx
+QG2EVObybGhCqcXzR98BMB8GA1UdIwQYMBaAFBn4WC8U1qbMmwSYCA1M16sAp4NlMIHgBgNVHR8E
+gdgwgdUwgdKggc+ggcyGgZ5sZGFwOi8vbGRhcGNvbXAuY2VydC5mbm10LmVzL0NOPUNSTDEsT1U9
+QUMlMjBDb21wb25lbnRlcyUyMEluZm9ybWF0aWNvcyxPPUZOTVQtUkNNLEM9RVM/Y2VydGlmaWNh
+dGVSZXZvY2F0aW9uTGlzdDtiaW5hcnk/YmFzZT9vYmplY3RjbGFzcz1jUkxEaXN0cmlidXRpb25Q
+b2ludIYpaHR0cDovL3d3dy5jZXJ0LmZubXQuZXMvY3Jsc2NvbXAvQ1JMMS5jcmwwDQYJKoZIhvcN
+AQELBQADggEBAIvfqIer2TbSZFWkfuRBg56f8L4Pt2kLYKiG+1uWZmSXkbB9u5VHcaR2Xw/jqwJ/
+gLY3sJQ/akh5jZfXo1SuQAycuM3aAIl+H0bAKv/0EDaOko0QXnvSqsoaWZywnMvSD/cdMBcOxQ8H
+/KgqlrkKHKr6QrakamkA5X7zNTMsi5FhnBt3VD5/bIoAFH94MXx18mL9DOqbl8OeYozWDryPxkZq
+hkI6Ci595hBUeKRn5PENnS/+palVZ2K6AvbK2wVJElKb7ldyRZmNENF5Wg7PGOVIN1PpMfKtNNfq
+HudSJmVgHFFi+0JFRj92PDCAwukN+h9Mqu744XxoVjJZgGgvJF0=
+</ds:X509Certificate>
+</ds:X509Data>
+<ds:KeyValue>
+<ds:RSAKeyValue>
+<ds:Modulus>
+hicqzbei51EUQMAbsxFCoFtDmZtS0mDyBWy0V3tRotRkrKcXZeJCdxdLTbFW98wsqsbSn8Bm6oMH
+RAKAQNmmjkyooGYeM/NGlhIOiZqbZTFoVelvNTj3IMlAhcU8QOn8xsDmM9WAgcB2x4mcJ7gPpg4r
+OO6DkQ6hZkrMiiLYv4QZ8n46Kxzoz9xbXJgcZrVbmyUd/qQpMwJpkb7txOdaRM+phsgDrGnJ+MaA
+DRUeMZb5hddIqPM7g3WNPtT/K17UUjlDEKHj6fp+UbkZw30gT8Cq+7qODbh1eWnij32jLAmXlrYs
+EkBctpf8S7WFHJjbhaw33HImlmr/VfpEjbiWtQ==
+</ds:Modulus>
+<ds:Exponent>AQAB</ds:Exponent>
+</ds:RSAKeyValue>
+</ds:KeyValue>
+</ds:KeyInfo>
+</ds:Signature></soapenv:Header><soapenv:Body Id="id-D718FCDC4E58DA1FB915246509498143534"><ConfirmacionPeticion xmlns="http://intermediacion.redsara.es/scsp/esquemas/V3/confirmacionPeticion">
+			<Atributos>
+				<IdPeticion>0340_SPP_QA_MH_TGSVLA_0026</IdPeticion>
+				<NumElementos>2</NumElementos>
+				<TimeStamp>2018-04-25T12:09:09.772+02:00</TimeStamp>
+				<Estado>
+					<CodigoEstado>0002</CodigoEstado>
+					<CodigoEstadoSecundario/>
+					<LiteralError>En proceso</LiteralError>
+					<TiempoEstimadoRespuesta>24</TiempoEstimadoRespuesta>
+				</Estado>
+				<CodigoCertificado>SVDTGSSVIDALABORALWS01</CodigoCertificado>
+			</Atributos>
+		</ConfirmacionPeticion></soapenv:Body></soapenv:Envelope>

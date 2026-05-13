@@ -1295,3 +1295,192 @@ white-space: nowrap;
     color: #fff;
     font-weight: 600;
 }
+
+/* ===== Admin Ops Dashboard ===== */
+.ops-stat-card{
+    background: linear-gradient(180deg, #ffffff 0%, #f8fffb 100%);
+    border: 1px solid #e6f3ec;
+    border-radius: 14px;
+    padding: 16px 18px;
+    box-shadow: 0 8px 20px rgba(16, 24, 40, .04);
+  }
+  .ops-stat-card--danger{
+    border-color: #fecaca;
+    background: linear-gradient(180deg, #fff 0%, #fff5f5 100%);
+  }
+  .ops-stat-label{ font-size: .8rem; color: #6b7280; margin-bottom: 6px; }
+  .ops-stat-value{ font-size: 1.9rem; font-weight: 700; line-height: 1.1; color: #111827; }
+  .ops-stat-sub{ font-size: .78rem; color: #6b7280; margin-top: 4px; }
+  
+  .ops-module-card{
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    background: #fff;
+    padding: 14px;
+    height: 100%;
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+    box-shadow: 0 8px 20px rgba(16, 24, 40, .04);
+  }
+  .ops-module-card:hover{
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px rgba(16, 24, 40, .10);
+  }
+  .ops-module-card.is-ok{ border-left: 4px solid #10b981; }
+  .ops-module-card.is-warning{ border-left: 4px solid #f59e0b; }
+  .ops-module-card.is-danger{ border-left: 4px solid #ef4444; }
+  
+  .ops-module-card__head{
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .ops-module-card__icon{
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    background: #ecfdf5;
+    color: #059669;
+  }
+  .ops-module-card__title{
+    font-weight: 600;
+    font-size: .95rem;
+  }
+  .ops-module-card__kpis{
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .ops-module-card__kpis > div{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ops-chip{
+    display: inline-block;
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: .72rem;
+    background: #eef2ff;
+    color: #4338ca;
+  }
+  .ops-chip--danger{
+    background: #fee2e2;
+    color: #b91c1c;
+  }
+  .ops-module-card__hint{
+    color: #6b7280;
+    font-size: .8rem;
+    min-height: 34px;
+  }
+  .ops-module-card__cta{
+    margin-top: 8px;
+    font-size: .82rem;
+    color: #059669;
+    font-weight: 600;
+  }
+
+  /* Quick filters (admin lists) */
+.filter-chips{
+    display:flex;
+    flex-wrap:wrap;
+    gap:.5rem;
+  }
+  .filter-chip{
+    display:inline-flex;
+    align-items:center;
+    border:1px solid #d1d5db;
+    color:#334155;
+    background:#fff;
+    border-radius:999px;
+    padding:.38rem .78rem;
+    font-size:.79rem;
+    font-weight:500;
+    text-decoration:none;
+    transition:all .16s ease;
+  }
+  .filter-chip:hover{
+    border-color:#86efac;
+    color:#047857;
+    background:#f0fdf4;
+    transform:translateY(-1px);
+  }
+  .filter-chip.active{
+    border-color:#10b981;
+    background:#10b981;
+    color:#fff;
+    box-shadow:0 6px 16px rgba(16,185,129,.22);
+  }
+
+  /* Notificaciones: click directo y preview en hover */
+.app-notif-wrap{
+    position: relative;
+  }
+  
+  .app-notif-hover-menu{
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 1050;
+  }
+  
+  @media (hover: hover) and (pointer: fine) {
+    .app-notif-wrap:hover .app-notif-hover-menu{
+      display: block;
+    }
+  }
+  
+  /* En móvil/tablet táctil, sin dropdown hover */
+  @media (hover: none), (pointer: coarse) {
+    .app-notif-hover-menu{
+      display: none !important;
+    }
+  }
+
+  /* Hover card notificaciones (compacta y moderna) */
+.app-notif-hover-card{
+    min-width: 340px;
+    max-width: 360px;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #fff;
+    box-shadow: 0 14px 36px rgba(15, 23, 42, .18);
+    backdrop-filter: blur(4px);
+  }
+  
+  .app-notif-hover-head{
+    padding: .65rem .9rem;
+    border-bottom: 1px solid #eef2f7;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    font-size: .82rem;
+    color: #334155;
+  }
+  
+  .app-notif-item{
+    padding: .75rem .9rem;
+    font-size: .82rem;
+    line-height: 1.35;
+  }
+  
+  .app-notif-item:hover{
+    background: #f8fafc;
+  }
+  
+  .app-notif-time{
+    font-size: .72rem;
+    margin-top: .35rem;
+  }
+  
+  .app-notif-empty{
+    padding: .85rem .9rem;
+    font-size: .82rem;
+    color: #6b7280;
+  }

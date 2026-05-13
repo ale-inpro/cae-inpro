@@ -64,6 +64,8 @@ final class CaeAiController extends Controller
     /** @param array<string,string> $params */
     public function generate(array $params = []): void
     {
+        ob_start(); // captura cualquier warning PHP para que no corrompa el JSON
+
         $this->assertAreaAccess();
         $this->requireAdmin();
 
@@ -72,17 +74,19 @@ final class CaeAiController extends Controller
 
         $tech = $this->loadTech($pdo, $tid);
         if (!$tech) {
-            $this->flash('Técnico no encontrado.', 'danger', 'Error');
-            header('Location: ' . $this->areaBaseUrl() . '/tecnicos');
+            ob_end_clean();
+            header('Content-Type: application/json');
+            echo json_encode(['ok' => false, 'error' => 'Técnico no encontrado.']);
             exit;
         }
 
-        $selected = array_map('intval', (array) ($_POST['existing_doc_ids'] ?? []));
+        $selected   = array_map('intval', (array) ($_POST['existing_doc_ids'] ?? []));
         $extraNotes = trim((string) ($_POST['extra_notes'] ?? ''));
 
         if ($selected === [] && empty($_FILES['new_docs']['name'][0])) {
-            $this->flash('Selecciona al menos un documento existente o adjunta uno nuevo.', 'warning', 'Aviso');
-            header('Location: ' . $this->areaBaseUrl() . '/tecnicos/' . $tid . '/cae/ia');
+            ob_end_clean();
+            header('Content-Type: application/json');
+            echo json_encode(['ok' => false, 'error' => 'Selecciona al menos un documento existente o adjunta uno nuevo.']);
             exit;
         }
 
@@ -152,42 +156,20 @@ final class CaeAiController extends Controller
             }
         }
 
-        $draft = CaeAiService::buildDraft($tech, $sources, $extraNotes);
+        // 1. PHP determina el estado — lógica determinista, sin IA
+        $statusResult = CaeAiService::determineStatus($sources);
 
-        // Fechas enviadas por el formulario (tienen prioridad sobre las del draft IA)
+        // 2. IA solo redacta el texto narrativo del PDF
+        $draft = CaeAiService::generateNarrative($tech, $sources, $statusResult, $extraNotes);
+
+        // 3. Fechas del formulario tienen prioridad
         $overrideFrom  = trim((string) ($_POST['valid_from']  ?? ''));
         $overrideUntil = trim((string) ($_POST['valid_until'] ?? ''));
         if ($overrideFrom !== '')  $draft['campos']['valido_desde'] = $overrideFrom;
         if ($overrideUntil !== '') $draft['campos']['valido_hasta'] = $overrideUntil;
 
-        // ── Verificación determinista ANTES de renderizar el PDF ──
-        $filenames   = array_map(
-            static fn($s) => strtolower((string) ($s['original_filename'] ?? '')),
-            $sources
-        );
-        $hasPolizaRC = (bool) preg_grep('/p[oó]liza.{0,15}rc|rc.{0,15}p[oó]liza/i', $filenames);
-        $hasReciboRC = (bool) preg_grep('/recibo.{0,15}rc|rc.{0,15}recibo/i', $filenames);
-
-        if (!$hasPolizaRC || !$hasReciboRC) {
-            $faltantes = [];
-            if (!$hasPolizaRC) $faltantes[] = 'Póliza RC';
-            if (!$hasReciboRC) $faltantes[] = 'Recibo RC';
-            $draft['conclusion_estado'] = 'pending_docs';
-            $draft['faltantes'] = array_values(array_unique(
-                array_merge($faltantes, (array) ($draft['faltantes'] ?? []))
-            ));
-            $draft['resumen'] = 'Documentación incompleta. Faltan: ' . implode(', ', $faltantes) . '.';
-        }
-
-        // Mapear estado → estado CAE
-        $aiEstado  = (string) ($draft['conclusion_estado'] ?? 'in_review');
-        $caeStatus = match ($aiEstado) {
-            'approved'     => 'approved',
-            'in_review'    => 'in_review',
-            'pending_docs' => 'pending_docs',
-            'rejected'     => 'rejected',
-            default        => 'in_review',
-        };
+        // El estado ya viene determinado por PHP, no por la IA
+        $caeStatus = (string) ($draft['conclusion_estado'] ?? 'in_review');
 
         // ── Renderizar PDF con el draft ya corregido ──
         $pdfDir = dirname(__DIR__, 3) . '/public/uploads/cae-generated/' . $tid;
@@ -233,13 +215,14 @@ final class CaeAiController extends Controller
             ]);
         }
 
+        ob_end_clean();
         header('Content-Type: application/json');
         echo json_encode([
             'ok'            => true,
             'pdf_url'       => $this->baseUrl() . $pdfRel,
             'generation_id' => $genId,
             'cae_status'    => $caeStatus,
-            'ai_estado'     => $aiEstado,
+            'ai_estado'     => $caeStatus,
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }
@@ -247,6 +230,8 @@ final class CaeAiController extends Controller
     /** @param array<string,string> $params */
     public function save(array $params = []): void
     {
+        ob_start(); // captura cualquier warning PHP para que no corrompa el JSON
+
         $this->assertAreaAccess();
         $this->requireAdmin();
 
@@ -254,6 +239,7 @@ final class CaeAiController extends Controller
         $genId          = (int) ($_POST['generation_id'] ?? 0);
         $conflictAction = trim((string) ($_POST['conflict_action'] ?? 'new_revision'));
 
+        ob_end_clean();
         header('Content-Type: application/json');
 
         if ($tid <= 0 || $genId <= 0) {

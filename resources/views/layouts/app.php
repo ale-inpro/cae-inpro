@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 $appCfg = require __DIR__ . '/../../../config/app.php';
 $base = rtrim((string) ($appCfg['url'] ?? '/cae-inpro/public'), '/');
+$basePath = rtrim((string) (parse_url($base, PHP_URL_PATH) ?? $base), '/');
 $currentPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
-$isActive = static function (string $path) use ($base, $currentPath): string {
-    return str_starts_with($currentPath, $base . $path) ? 'active' : '';
+
+$isActive = static function (string $path) use ($basePath, $currentPath): string {
+    return str_starts_with($currentPath, $basePath . $path) ? 'active' : '';
 };
 
 ?>

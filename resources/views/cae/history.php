@@ -186,6 +186,11 @@ $statusBadge = static function (string $status): string {
                                         </div>
                                     </div>
 
+                                    <div id="ai-form-error" class="alert alert-warning small py-2 d-none">
+                                        <i class="bi bi-exclamation-triangle me-1"></i>
+                                        <span id="ai-form-error-msg"></span>
+                                    </div>
+
                                     <button type="submit" class="btn btn-primary w-100" id="ai-generate-btn">
                                         <i class="bi bi-stars me-1"></i> Generar CAE PDF con IA
                                     </button>
@@ -465,14 +470,28 @@ document.addEventListener('DOMContentLoaded', function () {
         rejected:     { cls: 'text-bg-danger',    label: 'Rechazado',        hint: 'Documentos inválidos, caducados o ilegibles según la IA.' },
     };
 
+    const aiFormError    = document.getElementById('ai-form-error');
+    const aiFormErrorMsg = document.getElementById('ai-form-error-msg');
+
+    function showAiError(msg) {
+        if (aiFormError && aiFormErrorMsg) {
+            aiFormErrorMsg.textContent = msg;
+            aiFormError.classList.remove('d-none');
+            aiFormError.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
+    function hideAiError() {
+        if (aiFormError) aiFormError.classList.add('d-none');
+    }
+
     if (aiForm) {
         aiForm.addEventListener('submit', async (e) => {
             e.preventDefault();
+            hideAiError();
             overlay.style.display = 'flex';
             startStepAnimation();
 
             const fd = new FormData(aiForm);
-            // Añadir fechas del formulario IA al payload
             const aiFrom  = document.getElementById('ai-valid-from');
             const aiUntil = document.getElementById('ai-valid-until');
             if (aiFrom?.value)  fd.set('valid_from',  aiFrom.value);
@@ -488,7 +507,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 overlay.style.display = 'none';
 
                 if (!data.ok) {
-                    alert('Error al generar: ' + (data.error || 'desconocido'));
+                    showAiError(data.error || 'Error desconocido al generar el CAE.');
                     return;
                 }
 
@@ -507,7 +526,8 @@ document.addEventListener('DOMContentLoaded', function () {
             } catch (err) {
                 stopStepAnimation();
                 overlay.style.display = 'none';
-                alert('Error de red o servidor: ' + err.message);
+                showAiError('Error de comunicación con el servidor. Inténtalo de nuevo.');
+                console.error('[CAE AI] generate error:', err.message);
             }
         });
     }
@@ -549,12 +569,13 @@ document.addEventListener('DOMContentLoaded', function () {
             if (data.ok) {
                 window.location.href = data.redirect_url;
             } else {
-                alert('Error al guardar: ' + (data.error || 'desconocido'));
+                showAiError('Error al guardar: ' + (data.error || 'Error desconocido.'));
             }
         } catch (err) {
             stopStepAnimation();
             overlay.style.display = 'none';
-            alert('Error de red: ' + err.message);
+            showAiError('Error de comunicación al guardar. Inténtalo de nuevo.');
+            console.error('[CAE AI] save error:', err.message);
         }
     }
 

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SOAP-ENV:Envelope xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><SOAP-ENV:Header><wsse:Security xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"><wsse:BinarySecurityToken EncodingType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary" ValueType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3" wsu:Id="CertId-310A579BBA16A81AEB136215291431517634" xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd" xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd">MIIEaTCCA9KgAwIBAgIEPLKNjDANBgkqhkiG9w0BAQUFADA2MQswCQYDVQQGEwJFUzENMAsGA1UEChMERk5NVDEYMBYGA1UECxMPRk5NVCBDbGFzZSAyIENBMB4XDTA5MDgwNTEwNDQ1MloXDTEzMDgwNTEwNDQ1Mlowgb8xCzAJBgNVBAYTAkVTMQ0wCwYDVQQKEwRGTk1UMRgwFgYDVQQLEw9GTk1UIENsYXNlIDIgQ0ExETAPBgNVBAsTCFB1YmxpY29zMRIwEAYDVQQLEwk1MDAwNzAwMTUxYDBeBgNVBAMTV0RFU0NSSVBDSU9OIERPTUlDSUxJTy5SRURTQVJBLkVTIC0gRU5USURBRCBNSU5JU1RFUklPIERFIExBIFBSRVNJREVOQ0lBIC0gQ0lGIFMyODExMDAxQzCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALva3mxaIZP61FmD4YWYL4LAT7H3PIxuSX0PyRH8Gn0q50SM6D09CP2gTQp7GIR4BxKQG0zKEK4daM4UOrb561kHZW6th5PA2Q3RbFffqcJlgobPEZTKf73q9/Sc4aBy+C5UVVmFbkiek6l+AGePgQGXrTJ4XWqyPIcfQbJ26Ba8KNXCI+V1tJGe512gLJbveF5rG8hR6RhEH/MNr+is4UQdYFO/TY35Jd3crgGZOGqSj6ZmlCSzE0xvSIAy4p7zGLzAGVGsaIN6unqrbDDUzn1jtXs3pCL3xXrCd+/Xwpz53mynNraNQeKjnGbPeX38IMzDwhjeNhbeUgX3FDnC3NkCAwEAAaOCAXQwggFwMHkGA1UdEQRyMHCkbjBsMRgwFgYJKwYBBAGsZgEPEwlTMjgxMTAwMUMxKzApBgkrBgEEAaxmAQ4THE1JTklTVEVSSU8gREUgTEEgUFJFU0lERU5DSUExIzAhBgkrBgEEAaxmAQgTFERPTUlDSUxJTy5SRURTQVJBLkVTMAkGA1UdEwQCMAAwKwYDVR0QBCQwIoAPMjAwOTA4MDUxMDQ0NTJagQ8yMDEzMDgwNTEwNDQ1MlowCwYDVR0PBAQDAgWgMBEGCWCGSAGG+EIBAQQEAwIFoDAdBgNVHQ4EFgQUuSpVfu1t7EkPPU8U8D6XvgHHdbcwHwYDVR0jBBgwFoAUQJp2RJd0B8SsFMsejU86RXww12EwWwYDVR0fBFQwUjBQoE6gTKRKMEgxCzAJBgNVBAYTAkVTMQ0wCwYDVQQKEwRGTk1UMRgwFgYDVQQLEw9GTk1UIENsYXNlIDIgQ0ExEDAOBgNVBAMTB0NSTDYyMjIwDQYJKoZIhvcNAQEFBQADgYEANa1n9y0djNbF+4iiOKqjXyaJVsVMN2SS0oZHdZF35iv5G+9glpKisU1qQfqSecJZWaSroxPz7wlBUbF5DHu27AuP2TZYnGInkXjlsjMJNqzxP8acwC6wuuYpxoPs6Zoq9UOBnM+1B3DmK7LG6tZbElekWrw7AWZfAecsGr6KsjM=</wsse:BinarySecurityToken><ds:Signature Id="Signature-11621" xmlns:ds="http://www.w3.org/2000/09/xmldsig#">
+<ds:SignedInfo>
+<ds:CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>
+<ds:SignatureMethod Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha1"/>
+<ds:Reference URI="#id-11622">
+<ds:Transforms>
+<ds:Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>
+</ds:Transforms>
+<ds:DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha1"/>
+<ds:DigestValue>DcNFMe5M7KtCcxcUY1pC3kupK6E=</ds:DigestValue>
+</ds:Reference>
+</ds:SignedInfo>
+<ds:SignatureValue>
+s4FjBxk7EEq2o5gAsyg4einjMp8KrDdwVSLQ/iOBiMoVudzIdukygVu8y5kTKAxgs0d6Q1CNMO54
+WN4jpaO0ve1JnBtabxTKEm4iRL0a0a8JBkOh+VmymoDWN8v4clR+8pK9JHVpWHtxyw1JGp9RSh4i
+7Dg1CTpKNnOj6TZN+16kDB515tbL+wliSFAIsUV4sf1NH2rs3dgEoRMIiTe7PSShbUHrKq9uAe8T
+xVVl3fYG/FZP1o1Ivhp5EzLIGwT0LYECpqa2LmP5053Ws6DOMNY3dpSU3fkr/JSLDntxlef2FNeP
+EJzI+g2iU6hISU/r4oZVQ9A/f39KbCr0L0IS/A==
+</ds:SignatureValue>
+<ds:KeyInfo Id="KeyId-310A579BBA16A81AEB136215291431617635">
+<wsse:SecurityTokenReference wsu:Id="STRId-310A579BBA16A81AEB136215291431617636" xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd" xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd"><wsse:Reference URI="#CertId-310A579BBA16A81AEB136215291431517634" ValueType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3" xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"/></wsse:SecurityTokenReference>
+</ds:KeyInfo>
+</ds:Signature></wsse:Security></SOAP-ENV:Header><SOAP-ENV:Body wsu:Id="id-11622" xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd">
+<Peticion xmlns="http://intermediacion.redsara.es/scsp/esquemas/V3/peticion">
+	<Atributos>
+		<IdPeticion>342_SPP_MINHAP_CPAGO_0007</IdPeticion>
+		<NumElementos>1</NumElementos>
+		<TimeStamp>2013-03-01T16:48:34.265+01:00</TimeStamp>
+		<CodigoCertificado>Q2827003ATGSS001</CodigoCertificado>
+	</Atributos>
+	<Solicitudes>
+		<SolicitudTransmision>
+			<DatosGenericos>
+				<Emisor>
+					<NifEmisor>Q2827003A</NifEmisor>
+					<NombreEmisor>Seguridad Social</NombreEmisor>
+				</Emisor>
+				<Solicitante>
+					<IdentificadorSolicitante>S2833002E</IdentificadorSolicitante>
+					<NombreSolicitante>MINISTERIO DE HACIENDA Y AP</NombreSolicitante>
+					<UnidadTramitadora>SG COORD ESTUDIOS E IMPULSO ADM ELECLT(MINHAP)</UnidadTramitadora>
+					<Procedimiento>
+						<CodProcedimiento>SVDR_20101117_000254</CodProcedimiento>
+						<NombreProcedimiento>PRUEBAS DE INTEGRACION CORRIENTE DE PAGO</NombreProcedimiento>
+					</Procedimiento>
+					<Finalidad>PRUEBAS DE INTEGRACION CORRIENTE DE PAGO</Finalidad>
+					<Consentimiento>Si</Consentimiento>
+					<Funcionario>
+						<NombreCompletoFuncionario>JUAN ESPAÑOL ESPAÑOL</NombreCompletoFuncionario>
+						<NifFuncionario>99999999R</NifFuncionario>
+					</Funcionario>
+					<IdExpediente>EXP/16122012</IdExpediente>
+				</Solicitante>
+				<Titular>
+					<TipoDocumentacion>NIF</TipoDocumentacion>
+					<Documentacion>12345678Z</Documentacion>
+				</Titular>
+				<Transmision>
+					<CodigoCertificado>Q2827003ATGSS001</CodigoCertificado>
+					<IdSolicitud>342_SPP_MINHAP_CPAGO_0007</IdSolicitud>
+				</Transmision>
+			</DatosGenericos>
+		</SolicitudTransmision>
+	</Solicitudes>
+</Peticion></SOAP-ENV:Body></SOAP-ENV:Envelope>

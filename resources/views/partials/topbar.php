@@ -19,7 +19,7 @@ if ($currentUserId > 0) {
             FROM notifications
             WHERE user_id = :uid
             ORDER BY created_at DESC
-            LIMIT 8
+            LIMIT 5
         ");
         $stmtN->execute(['uid' => $currentUserId]);
         $topNotifications = $stmtN->fetchAll(\PDO::FETCH_ASSOC);
@@ -54,13 +54,13 @@ if ($currentUserId > 0) {
         <span class="app-pill app-pill--ok">En línea</span>
 
         <!-- Campanita de notificaciones -->
-        <div class="dropdown">
-            <button
+        <?php $notifUrl = $bu . '/' . htmlspecialchars($role) . '/notificaciones'; ?>
+        <div class="dropdown app-notif-wrap">
+            <a
                 class="btn btn-warning btn-sm position-relative app-notif-btn"
-                type="button"
-                data-bs-toggle="dropdown"
-                aria-expanded="false"
+                href="<?= $notifUrl ?>"
                 title="Notificaciones"
+                aria-label="Ir a notificaciones"
             >
                 <i class="bi bi-bell"></i>
                 <?php if ($unreadCount > 0): ?>
@@ -68,39 +68,40 @@ if ($currentUserId > 0) {
                         <?= $unreadCount > 99 ? '99+' : $unreadCount ?>
                     </span>
                 <?php endif; ?>
-            </button>
-            <div class="dropdown-menu dropdown-menu-end p-2 shadow" style="min-width:320px; max-height:420px; overflow-y:auto;">
-                <div class="d-flex justify-content-between align-items-center px-1 pb-1 border-bottom mb-2">
-                    <strong class="small">Notificaciones</strong>
-                    <a class="small text-decoration-none" href="<?= $bu ?>/<?= htmlspecialchars($role) ?>/notificaciones">Ver todas</a>
+            </a>
+
+            <div class="dropdown-menu dropdown-menu-end p-0 shadow app-notif-hover-menu app-notif-hover-card">
+                <div class="app-notif-hover-head">
+                    <strong>Última notificación</strong>
                 </div>
 
                 <div class="app-notif-list">
                     <?php if (empty($topNotifications)): ?>
-                        <p class="text-muted small mb-0 px-1">No tienes notificaciones.</p>
+                        <div class="app-notif-empty">
+                            <i class="bi bi-bell-slash me-1"></i> No tienes notificaciones.
+                        </div>
                     <?php else: ?>
-                        <?php foreach ($topNotifications as $n):
+                        <?php
+                            $n = $topNotifications[0];
                             $nPayload  = json_decode((string) ($n['payload_json'] ?? '{}'), true) ?? [];
                             $nCommId   = (int) ($nPayload['community_id'] ?? 0);
                             $nType     = (string) ($n['type'] ?? '');
                             $isClickable = ($role === 'admin' && $nType === 'rl_request_created' && $nCommId > 0);
                             $openUrl   = $isClickable ? $bu . '/admin/notificaciones/' . (int)$n['id'] . '/open' : null;
-                            // PostgreSQL devuelve bool como 't'/'f'; in_array maneja ambos casos
                             $nIsRead   = in_array($n['is_read'], [true, 't', '1'], true);
                             $readClass = $nIsRead ? 'text-muted' : 'fw-semibold';
                         ?>
-                            <?php if ($openUrl): ?>
-                            <a href="<?= htmlspecialchars($openUrl) ?>" class="px-2 py-2 small border-bottom d-block text-decoration-none text-reset">
-                            <?php else: ?>
-                            <div class="px-2 py-2 small border-bottom">
-                            <?php endif; ?>
-                                <div class="<?= $readClass ?> mb-1"><?= htmlspecialchars((string) $n['title']) ?></div>
-                                <div class="fw-normal text-truncate"><?= htmlspecialchars((string) $n['message']) ?></div>
-                                <div class="text-muted" style="font-size:0.7rem;">
-                                    <?= date('d/m H:i', strtotime((string) $n['created_at'])) ?>
-                                </div>
-                            <?php if ($openUrl): ?></a><?php else: ?></div><?php endif; ?>
-                        <?php endforeach; ?>
+                        <?php if ($openUrl): ?>
+                        <a href="<?= htmlspecialchars($openUrl) ?>" class="app-notif-item text-decoration-none text-reset d-block">
+                        <?php else: ?>
+                        <div class="app-notif-item">
+                        <?php endif; ?>
+                            <div class="<?= $readClass ?> mb-1"><?= htmlspecialchars((string) $n['title']) ?></div>
+                            <div class="fw-normal"><?= htmlspecialchars((string) $n['message']) ?></div>
+                            <div class="text-muted app-notif-time">
+                                <?= date('d/m H:i', strtotime((string) $n['created_at'])) ?>
+                            </div>
+                        <?php if ($openUrl): ?></a><?php else: ?></div><?php endif; ?>
                     <?php endif; ?>
                 </div>
             </div>

@@ -18,8 +18,62 @@ final class TechnicianController extends Controller
         $pdo = Database::connection();
         $role = (string) ($_SESSION['user']['role'] ?? '');
         $managerCompanyId = $this->currentUserManagerCompanyId($pdo);
+        $focus = trim((string) ($_GET['focus'] ?? ''));
+        $validFocus = ['cae_pending', 'cae_overdue', 'docreq_open', 'docreq_expired'];
+
+        // Admin: recordar último filtro
+        if ($role === 'admin') {
+            if ($focus === '' && isset($_SESSION['admin_tech_focus']) && in_array((string) $_SESSION['admin_tech_focus'], $validFocus, true)) {
+                $focus = (string) $_SESSION['admin_tech_focus'];
+            } elseif ($focus === 'all') {
+                unset($_SESSION['admin_tech_focus']);
+                $focus = '';
+            } elseif (in_array($focus, $validFocus, true)) {
+                $_SESSION['admin_tech_focus'] = $focus;
+            }
+        }
 
         if ($role === 'admin') {
+            $focusWhere = '';
+            $params = [];
+        
+            switch ($focus) {
+                case 'cae_pending':
+                    $focusWhere = " AND COALESCE(c.status::text, 'pending_docs') IN ('pending', 'pending_docs', 'in_review')";
+                    break;
+        
+                case 'cae_overdue':
+                    $focusWhere = " AND COALESCE(c.status::text, 'pending_docs') IN ('pending', 'pending_docs', 'in_review')
+                                    AND COALESCE(c.updated_at, c.created_at) < NOW() - INTERVAL '7 days'";
+                    break;
+        
+                case 'docreq_open':
+                    $focusWhere = " AND EXISTS (
+                                        SELECT 1
+                                        FROM cae_document_requests r
+                                        WHERE r.technician_id = t.id
+                                          AND r.status = 'sent'
+                                          AND r.token_used_at IS NULL
+                                    )";
+                    break;
+        
+                case 'docreq_expired':
+                    $focusWhere = " AND EXISTS (
+                                        SELECT 1
+                                        FROM cae_document_requests r
+                                        WHERE r.technician_id = t.id
+                                          AND r.status = 'sent'
+                                          AND r.token_used_at IS NULL
+                                          AND r.token_expires_at IS NOT NULL
+                                          AND r.token_expires_at < NOW()
+                                    )";
+                    break;
+        
+                default:
+                    $focus = '';
+                    break;
+            }
+        
             $sql = "
                 SELECT
                     t.id,
@@ -34,10 +88,14 @@ final class TechnicianController extends Controller
                     ON c.technician_id = t.id
                    AND c.is_current = TRUE
                 WHERE t.is_active = TRUE
+                {$focusWhere}
                 ORDER BY t.last_name, t.first_name
             ";
-            $rows = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         } else {
+            $focus = ''; // gestor sin filtros desde dashboard admin
             $sql = "
                 SELECT
                     t.id,
@@ -69,6 +127,7 @@ final class TechnicianController extends Controller
             'area' => $this->currentArea(),
             'areaBaseUrl' => $this->areaBaseUrl(),
             'technicians' => $rows,
+            'focus' => $focus,
         ]);
     }
 
@@ -169,13 +228,32 @@ final class TechnicianController extends Controller
         $stmt->execute(['id' => $id]);
         $caeHistory = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        $hasExpiresAt = false;
+        try {
+            $colStmt = $pdo->prepare("
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'cae_documents'
+                  AND column_name = 'expires_at'
+                LIMIT 1
+            ");
+            $colStmt->execute();
+            $hasExpiresAt = (bool) $colStmt->fetchColumn();
+        } catch (\Throwable) {
+            $hasExpiresAt = false;
+        }
+
+        $expiresSelect = $hasExpiresAt ? 'cd.expires_at' : 'NULL::date AS expires_at';
+
         $stmt = $pdo->prepare("
             SELECT
                 cd.id,
                 dt.name AS document_name,
                 cd.original_filename,
                 cd.storage_path,
-                cd.uploaded_at
+                cd.uploaded_at,
+                {$expiresSelect}
             FROM cae_documents cd
             JOIN document_types dt ON dt.id = cd.document_type_id
             JOIN cae_records cr ON cr.id = cd.cae_record_id
@@ -187,6 +265,30 @@ final class TechnicianController extends Controller
         $stmt->execute(['tid' => $id]);
         $caeDocuments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        $pendingIntakeDocs = [];
+        if ($role === 'admin') {
+            $stmt = $pdo->prepare("
+                SELECT
+                    i.id,
+                    i.original_filename,
+                    i.storage_path,
+                    i.ai_status,
+                    i.ai_confidence,
+                    i.ai_issue_date,
+                    i.ai_expires_at,
+                    i.ai_notes,
+                    i.created_at,
+                    dt.name AS document_name
+                FROM cae_document_intake i
+                JOIN document_types dt ON dt.id = i.document_type_id
+                WHERE i.technician_id = :tid
+                  AND i.status = 'pending_manual'
+                ORDER BY i.created_at DESC
+            ");
+            $stmt->execute(['tid' => $id]);
+            $pendingIntakeDocs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+
         $caeDocTypes = [];
         if ($this->currentArea() === 'admin') {
             $stmt = $pdo->query("
@@ -195,7 +297,19 @@ final class TechnicianController extends Controller
                 WHERE scope = 'technician_cae'
                     AND is_active = TRUE
                     AND is_cae_file_type = FALSE
-                ORDER BY name
+                    AND name IN (
+                        'Certificado de estar al corriente con Hacienda',
+                        'Certificado de estar al corriente con Seguridad Social',
+                        'Póliza de Responsabilidad Civil',
+                        'Certificado de Prevención de Riesgos Laborales'
+                    )
+                    ORDER BY CASE name
+                        WHEN 'Certificado de estar al corriente con Hacienda' THEN 1
+                        WHEN 'Certificado de estar al corriente con Seguridad Social' THEN 2
+                        WHEN 'Póliza de Responsabilidad Civil' THEN 3
+                        WHEN 'Certificado de Prevención de Riesgos Laborales' THEN 4
+                        ELSE 99
+                    END
             ");
             $caeDocTypes = $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
@@ -209,6 +323,7 @@ final class TechnicianController extends Controller
             'currentCae' => $currentCae,
             'caeHistory' => $caeHistory,
             'caeDocuments' => $caeDocuments,
+            'pendingIntakeDocs' => $pendingIntakeDocs,
             'caeDocTypes' => $caeDocTypes,
         ]);
     }

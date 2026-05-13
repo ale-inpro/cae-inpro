@@ -18,8 +18,47 @@ final class CommunityController extends Controller
         $pdo = Database::connection();
         $role = (string) ($_SESSION['user']['role'] ?? '');
         $managerCompanyId = $this->currentUserManagerCompanyId($pdo);
+        $focus = trim((string) ($_GET['focus'] ?? ''));
+        $validFocus = ['rl_pending', 'rl_overdue'];
+
+        // Admin: recordar último filtro
+        if ($role === 'admin') {
+            if ($focus === '' && isset($_SESSION['admin_comm_focus']) && in_array((string) $_SESSION['admin_comm_focus'], $validFocus, true)) {
+                $focus = (string) $_SESSION['admin_comm_focus'];
+            } elseif ($focus === 'all') {
+                unset($_SESSION['admin_comm_focus']);
+                $focus = '';
+            } elseif (in_array($focus, $validFocus, true)) {
+                $_SESSION['admin_comm_focus'] = $focus;
+            }
+        }
 
         if ($role === 'admin') {
+            $focusWhere = '';
+        
+            switch ($focus) {
+                case 'rl_pending':
+                    $focusWhere = " AND EXISTS (
+                                        SELECT 1 FROM rl_requests rr
+                                        WHERE rr.community_id = c.id
+                                          AND rr.status = 'pending'
+                                    )";
+                    break;
+        
+                case 'rl_overdue':
+                    $focusWhere = " AND EXISTS (
+                                        SELECT 1 FROM rl_requests rr
+                                        WHERE rr.community_id = c.id
+                                          AND rr.status = 'pending'
+                                          AND rr.created_at < NOW() - INTERVAL '5 days'
+                                    )";
+                    break;
+        
+                default:
+                    $focus = '';
+                    break;
+            }
+        
             $sql = "
                 SELECT
                     c.id,
@@ -31,10 +70,12 @@ final class CommunityController extends Controller
                 LEFT JOIN community_risk_reports rr
                     ON rr.community_id = c.id
                 WHERE c.is_active = TRUE
+                {$focusWhere}
                 ORDER BY c.name
             ";
             $rows = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
         } else {
+            $focus = '';
             $sql = "
                 SELECT
                     c.id,
@@ -60,6 +101,7 @@ final class CommunityController extends Controller
             'area' => $this->currentArea(),
             'areaBaseUrl' => $this->areaBaseUrl(),
             'communities' => $rows,
+            'focus' => $focus,
         ]);
     }
 

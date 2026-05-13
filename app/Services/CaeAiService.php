@@ -6,90 +6,221 @@ namespace App\Services;
 
 final class CaeAiService
 {
-    /** @param array<string,mixed> $technician @param array<int,array<string,mixed>> $sources */
-    public static function buildDraft(array $technician, array $sources, string $extraNotes = ''): array
+    // ─────────────────────────────────────────────────────────────
+    // PASO 1: PHP decide el estado — lógica determinista, sin IA
+    // Mismos documentos → mismo resultado siempre
+    // ─────────────────────────────────────────────────────────────
+
+    /** @param array<int, array<string,mixed>> $sources */
+    public static function determineStatus(array $sources): array
     {
-        $cfg = require dirname(__DIR__, 2) . '/config/ai.php';
+        $filenames = array_map(
+            static fn($s) => strtolower((string) ($s['original_filename'] ?? '')),
+            $sources
+        );
+
+        $hasPolizaRC = (bool) preg_grep('/p[oó]liza|responsabilidad.{0,10}civil/i', $filenames);
+        $hasSPA      = (bool) preg_grep('/prevenci[oó]n|spa|servicio.{0,10}prevenci[oó]n/i', $filenames);
+
+        $missing = [];
+        if (!$hasPolizaRC) $missing[] = 'Póliza de Responsabilidad Civil';
+        if (!$hasSPA)      $missing[] = 'Certificado de Prevención de Riesgos Laborales';
+
+        if ($missing !== []) {
+            return [
+                'status'   => 'pending_docs',
+                'missing'  => $missing,
+                'reason'   => 'Faltan documentos obligatorios: ' . implode(', ', $missing) . '.',
+                'has_text' => false,
+            ];
+        }
+
+        // Regla 2: verificar si algún documento es un escaneo sin texto extraíble
+        $hasNoText  = false;
+        $alertWords = ['caducado', 'anulado', 'vencido', 'cancelado', 'revocado', 'baja'];
+        $alertsFound = [];
+
+        foreach ($sources as $s) {
+            $text = trim((string) ($s['extracted_text'] ?? ''));
+            if ($text === '' || str_contains($text, '[Sin texto extraído')) {
+                $hasNoText = true;
+            } else {
+                $lower = strtolower($text);
+                foreach ($alertWords as $kw) {
+                    if (str_contains($lower, $kw)) {
+                        $alertsFound[] = $kw;
+                    }
+                }
+            }
+        }
+
+        // Regla 3: si hay escaneos → in_review (no verificable automáticamente)
+        if ($hasNoText) {
+            return [
+                'status'   => 'in_review',
+                'missing'  => [],
+                'reason'   => 'Documentos presentes pero no verificables automáticamente (archivos escaneados o imágenes). Se requiere revisión manual.',
+                'has_text' => false,
+            ];
+        }
+
+        // Regla 4: si hay palabras de alerta en el texto → in_review
+        if ($alertsFound !== []) {
+            $unique = array_unique($alertsFound);
+            return [
+                'status'   => 'in_review',
+                'missing'  => [],
+                'reason'   => 'Se detectaron términos de alerta en los documentos (' . implode(', ', $unique) . '). Revisión manual recomendada.',
+                'has_text' => true,
+                'alerts'   => $unique,
+            ];
+        }
+
+        // Regla 5: todo correcto → aprobado
+        return [
+            'status'   => 'approved',
+            'missing'  => [],
+            'reason'   => 'Documentación completa y verificada. Todos los documentos obligatorios están presentes y son legibles.',
+            'has_text' => true,
+        ];
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // PASO 2: IA solo redacta el texto narrativo del PDF
+    // El estado ya viene decidido por PHP — la IA no puede cambiarlo
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * @param array<string,mixed> $tech
+     * @param array<int, array<string,mixed>> $sources
+     * @param array<string,mixed> $statusResult  Resultado de determineStatus()
+     */
+    public static function generateNarrative(
+        array $tech,
+        array $sources,
+        array $statusResult,
+        string $extraNotes = ''
+    ): array {
+        $cfg    = require dirname(__DIR__, 2) . '/config/ai.php';
         $apiKey = (string) ($cfg['openai_api_key'] ?? '');
         $model  = (string) ($cfg['model'] ?? 'gpt-4o-mini');
 
-        $sourceText = [];
-        foreach ($sources as $s) {
-            $name = (string) ($s['original_filename'] ?? 'documento');
-            $txt  = trim((string) ($s['extracted_text'] ?? ''));
-            if ($txt === '') {
-                $txt = '[Sin texto extraído; posible escaneo o formato no soportado]';
-            }
-            $sourceText[] = "Documento: {$name}\n{$txt}";
-        }
+        $status      = (string) ($statusResult['status'] ?? 'in_review');
+        $reason      = (string) ($statusResult['reason'] ?? '');
+        $missing     = (array)  ($statusResult['missing'] ?? []);
 
-        // Fechas fijas del CAE vigente (o valores por defecto si no hay CAE)
-        $validFrom  = ($technician['valid_from']  ?? '') !== '' ? (string) $technician['valid_from']  : date('Y-m-d');
-        $validHasta = ($technician['valid_until'] ?? '') !== '' ? (string) $technician['valid_until'] : date('Y-m-d', strtotime('+3 months'));
+        $validFrom  = ($tech['valid_from']  ?? '') !== '' ? (string) $tech['valid_from']  : date('Y-m-d');
+        $validUntil = ($tech['valid_until'] ?? '') !== '' ? (string) $tech['valid_until'] : date('Y-m-d', strtotime('+3 months'));
 
-        $prompt = <<<PROMPT
-        Eres técnico de prevención y CAE. Los documentos obligatorios (Póliza RC y Recibo RC) ya han sido verificados por el sistema. Tu tarea es analizar la CALIDAD y VALIDEZ de los documentos proporcionados y generar un JSON en español con este formato exacto:
-        
-        {
-          "conclusion_estado": "approved|in_review|rejected",
-          "resumen": "texto breve profesional",
-          "observaciones": ["...","..."],
-          "faltantes": [],
-          "campos": {
-            "tecnico_nombre": "{$technician['full_name']}",
-            "tecnico_email": "{$technician['email']}",
-            "profesion": "{$technician['professions']}",
-            "valido_desde": "{$validFrom}",
-            "valido_hasta": "{$validHasta}"
-          }
-        }
-        
-        CRITERIOS DE ESTADO:
-        1. "approved"  → Todos los documentos presentes son legibles, coherentes y vigentes. Sin observaciones críticas.
-        2. "in_review" → Los documentos existen pero hay dudas de vigencia, legibilidad parcial o datos inconsistentes.
-        3. "rejected"  → Documentos claramente caducados, ilegibles en su totalidad o con datos contradictorios graves.
-        
-        REGLAS:
-        - No uses "pending_docs" — ese estado lo gestiona el sistema automáticamente.
-        - No inventes datos que no aparezcan en los documentos.
-        - Las fechas valido_desde ({$validFrom}) y valido_hasta ({$validHasta}) están fijas; devuélvelas exactamente.
-        - El nombre, email y profesión del técnico ya están dados; devuélvelos exactamente.
-        - "faltantes" déjalo siempre como array vacío [].
-        - Responde SOLO JSON válido, sin texto adicional ni bloques markdown.
-        
-        Datos del técnico:
-        - Nombre: {$technician['full_name']}
-        - Email: {$technician['email']}
-        - Profesión: {$technician['professions']}
-        Notas admin: {$extraNotes}
-        
-        Documentos analizados:
-        """
-        PROMPT;
-
-        $payload = [
-            'model' => $model,
-            'messages' => [
-                ['role' => 'system', 'content' => 'Especialista en CAE y cumplimiento documental.'],
-                ['role' => 'user', 'content' => $prompt . "\n" . implode("\n\n----\n\n", $sourceText)],
+        // Draft base con campos ya fijados por PHP
+        $baseDraft = [
+            'conclusion_estado' => $status,
+            'faltantes'         => $missing,
+            'campos'            => [
+                'tecnico_nombre' => (string) ($tech['full_name']   ?? ''),
+                'tecnico_email'  => (string) ($tech['email']       ?? ''),
+                'profesion'      => (string) ($tech['professions'] ?? ''),
+                'valido_desde'   => $validFrom,
+                'valido_hasta'   => $validUntil,
             ],
-            'temperature' => 0.2,
         ];
 
         if ($apiKey === '') {
-            return self::fallbackDraft($technician, 'API key IA no configurada.');
+            return array_merge($baseDraft, self::fallbackNarrative($status, $reason, $missing));
         }
+
+        // Construir resumen de documentos para el prompt
+        $docLines = [];
+        foreach ($sources as $s) {
+            $name = (string) ($s['original_filename'] ?? 'documento');
+            $txt  = trim((string) ($s['extracted_text'] ?? ''));
+
+            if ($txt === '' || str_contains($txt, '[Sin texto extraído')) {
+                $txt = '[Documento sin texto extraíble — posiblemente escaneado o imagen]';
+            } elseif (mb_strlen($txt) > 2000) {
+                // Truncar para no exceder tokens
+                $txt = mb_substr($txt, 0, 2000) . '... [truncado]';
+            }
+
+            $docLines[] = "• {$name}:\n{$txt}";
+        }
+
+        $statusLabel = match($status) {
+            'approved'     => 'APROBADO',
+            'in_review'    => 'EN REVISIÓN',
+            'pending_docs' => 'PENDIENTE DE DOCUMENTOS',
+            'rejected'     => 'RECHAZADO',
+            default        => strtoupper($status),
+        };
+
+        $missingLine = $missing !== []
+            ? 'Documentos faltantes detectados: ' . implode(', ', $missing) . '.'
+            : '';
+
+        $notesLine = $extraNotes !== '' ? "Notas del administrador: {$extraNotes}" : '';
+
+        $prompt = "Eres un técnico de prevención de riesgos laborales redactando el texto de un certificado CAE en español.
+
+ESTADO DETERMINADO POR EL SISTEMA (no puedes cambiarlo): {$statusLabel}
+MOTIVO DEL ESTADO: {$reason}
+{$missingLine}
+{$notesLine}
+
+Datos del técnico:
+- Nombre: {$tech['full_name']}
+- Email: {$tech['email']}
+- Profesión: {$tech['professions']}
+
+Documentos proporcionados:
+" . implode("\n\n", $docLines) . "
+
+Redacta el texto narrativo profesional para el certificado CAE con el estado {$statusLabel}.
+- resumen: 2-3 frases profesionales y objetivas que describan la situación documental.
+- observaciones: 2-4 puntos concretos sobre los documentos revisados, adecuados al estado {$statusLabel}.
+Tono: formal, técnico, en tercera persona.";
+
+        // Structured output — OpenAI garantiza el schema exacto (gpt-4o / gpt-4o-mini)
+        $payload = [
+            'model'       => $model,
+            'temperature' => 0,
+            'messages'    => [
+                [
+                    'role'    => 'system',
+                    'content' => 'Especialista en certificados CAE y documentación de prevención de riesgos laborales. Respondes ÚNICAMENTE con JSON válido según el schema indicado.',
+                ],
+                ['role' => 'user', 'content' => $prompt],
+            ],
+            'response_format' => [
+                'type'        => 'json_schema',
+                'json_schema' => [
+                    'name'   => 'cae_narrative',
+                    'strict' => true,
+                    'schema' => [
+                        'type'       => 'object',
+                        'properties' => [
+                            'resumen'       => ['type' => 'string'],
+                            'observaciones' => [
+                                'type'  => 'array',
+                                'items' => ['type' => 'string'],
+                            ],
+                        ],
+                        'required'             => ['resumen', 'observaciones'],
+                        'additionalProperties' => false,
+                    ],
+                ],
+            ],
+        ];
 
         $ch = curl_init('https://api.openai.com/v1/chat/completions');
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST => true,
-            CURLOPT_HTTPHEADER => [
+            CURLOPT_POST           => true,
+            CURLOPT_HTTPHEADER     => [
                 'Content-Type: application/json',
                 'Authorization: Bearer ' . $apiKey,
             ],
-            CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
-            CURLOPT_TIMEOUT => 45,
+            CURLOPT_POSTFIELDS     => json_encode($payload, JSON_UNESCAPED_UNICODE),
+            CURLOPT_TIMEOUT        => 45,
         ]);
 
         $raw = curl_exec($ch);
@@ -97,46 +228,59 @@ final class CaeAiService
         curl_close($ch);
 
         if (!is_string($raw) || $raw === '' || $err !== '') {
-            return self::fallbackDraft($technician, $err !== '' ? $err : 'Sin respuesta IA');
+            error_log('[CaeAiService] curl error: ' . $err);
+            return array_merge($baseDraft, self::fallbackNarrative($status, $reason, $missing));
         }
 
-        $resp = json_decode($raw, true);
+        $resp    = json_decode($raw, true);
         $content = (string) ($resp['choices'][0]['message']['content'] ?? '');
 
-        // GPT often wraps the JSON in markdown code fences (```json ... ```)
-        // Extract the first JSON object found regardless of surrounding text
+        // Por si acaso el modelo no soporta json_schema y devuelve markdown
         if (preg_match('/\{.*\}/s', $content, $m)) {
             $content = $m[0];
         }
 
-        $json = json_decode($content, true);
-        if (!is_array($json)) {
-            error_log('[CaeAiService] Respuesta no parseable. Content: ' . substr($content, 0, 500));
-            return self::fallbackDraft($technician, 'Respuesta IA no parseable.');
+        $narrative = json_decode($content, true);
+        if (!is_array($narrative) || !isset($narrative['resumen'])) {
+            error_log('[CaeAiService] narrative parse error. Content: ' . substr($content, 0, 300));
+            return array_merge($baseDraft, self::fallbackNarrative($status, $reason, $missing));
         }
 
-        return $json;
+        return array_merge($baseDraft, [
+            'resumen'       => (string) ($narrative['resumen']       ?? $reason),
+            'observaciones' => (array)  ($narrative['observaciones'] ?? []),
+        ]);
     }
 
-    /** @param array<string,mixed> $technician */
-    private static function fallbackDraft(array $technician, string $reason): array
+    // ─────────────────────────────────────────────────────────────
+    // Fallback: texto de plantilla si la IA no está disponible
+    // ─────────────────────────────────────────────────────────────
+
+    /** @param string[] $missing */
+    private static function fallbackNarrative(string $status, string $reason, array $missing): array
     {
-        $today = date('Y-m-d');
-        $plus3 = date('Y-m-d', strtotime('+3 months'));
+        $obs = match($status) {
+            'approved'     => [
+                'Toda la documentación requerida ha sido verificada correctamente.',
+                'La documentación de Responsabilidad Civil y Prevención de Riesgos está presente y es legible.',
+                'El certificado CAE puede ser emitido sin observaciones.',
+            ],
+            'in_review'    => [
+                'La documentación requiere revisión manual por parte del administrador.',
+                'Algunos documentos no han podido verificarse automáticamente.',
+                'Se recomienda contactar con el técnico para confirmar la vigencia de los documentos.',
+            ],
+            'pending_docs' => array_merge(
+                ['Faltan los siguientes documentos obligatorios para completar el CAE:'],
+                array_map(static fn($d) => "— {$d}", $missing),
+                ['El técnico debe aportar la documentación indicada antes de proceder.']
+            ),
+            default        => ['Estado pendiente de revisión administrativa.'],
+        };
 
         return [
-            'conclusion_estado' => 'in_review',
-            'resumen' => 'Borrador generado en modo de contingencia. Revisar documentación manualmente.',
-            'observaciones' => ['Validación manual recomendada.'],
-            'faltantes' => ['Revisión documental por administrador.'],
-            'campos' => [
-                'tecnico_nombre' => (string) ($technician['full_name'] ?? ''),
-                'tecnico_email' => (string) ($technician['email'] ?? ''),
-                'profesion' => (string) ($technician['professions'] ?? ''),
-                'valido_desde' => $today,
-                'valido_hasta' => $plus3,
-            ],
-            '_fallback_reason' => $reason,
+            'resumen'       => $reason,
+            'observaciones' => $obs,
         ];
     }
 }

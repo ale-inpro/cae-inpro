@@ -2,6 +2,21 @@
 $ab = htmlspecialchars($areaBaseUrl ?? '/cae-inpro/public/gestor');
 $role = (string) ($area ?? 'gestor');
 $items = $technicians ?? [];
+$focus = (string) ($focus ?? '');
+$focusLabel = match ($focus) {
+    'cae_pending'    => 'Filtro activo: CAE pendientes',
+    'cae_overdue'    => 'Filtro activo: CAE atrasados',
+    'docreq_open'    => 'Filtro activo: Solicitudes de documentos abiertas',
+    'docreq_expired' => 'Filtro activo: Solicitudes de documentos caducadas',
+    default          => '',
+};
+
+$focusOptions = [
+    ['key' => 'cae_pending',  'label' => 'CAE pendientes'],
+    ['key' => 'cae_overdue',  'label' => 'CAE atrasados'],
+    ['key' => 'docreq_open',  'label' => 'Solicitudes docs abiertas'],
+    ['key' => 'docreq_expired','label' => 'Solicitudes docs caducadas'],
+];
 
 $badgeClass = static function (string $status): string {
     return match ($status) {
@@ -36,6 +51,26 @@ $label = static function (string $status): string {
         <a class="btn btn-success" href="<?= $ab ?>/tecnicos/create">Nuevo técnico</a>
     <?php endif; ?>
 </div>
+
+<?php if ($role === 'admin'): ?>
+    <div class="filter-chips mb-3">
+        <a href="<?= $ab ?>/tecnicos?focus=all" class="filter-chip <?= $focus === '' ? 'active' : '' ?>">
+            <i class="bi bi-grid me-1"></i> Todos
+        </a>
+        <?php foreach ($focusOptions as $opt): ?>
+            <a href="<?= $ab ?>/tecnicos?focus=<?= urlencode($opt['key']) ?>" class="filter-chip <?= $focus === $opt['key'] ? 'active' : '' ?>">
+                <?= htmlspecialchars($opt['label']) ?>
+            </a>
+        <?php endforeach; ?>
+    </div>
+<?php endif; ?>
+
+<?php if ($focusLabel !== ''): ?>
+    <div class="alert alert-info d-flex justify-content-between align-items-center py-2">
+        <span><i class="bi bi-funnel me-1"></i><?= htmlspecialchars($focusLabel) ?></span>
+        <a class="btn btn-sm btn-outline-secondary" href="<?= $ab ?>/tecnicos">Quitar filtro</a>
+    </div>
+<?php endif; ?>
 
 <div class="card border-0 shadow-sm">
     <div class="card-body">

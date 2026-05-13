@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns="http://intermediacion.redsara.es/scsp/esquemas/datosespecificos" targetNamespace="http://intermediacion.redsara.es/scsp/esquemas/datosespecificos" elementFormDefault="qualified" attributeFormDefault="unqualified">
+	<xs:element name="DatosEspecificos" type="DatosEspecificos"/>
+	<xs:complexType name="DatosEspecificos">
+		<xs:all>
+			<xs:element name="Retorno" minOccurs="0">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="Codigo" type="xs:string"/>
+						<xs:element name="Resultado" type="xs:string"/>
+						<xs:element name="Descripcion" type="xs:string"/>
+					</xs:sequence>
+				</xs:complexType>
+			</xs:element>
+		</xs:all>
+		<xs:attribute name="Id" type="xs:string" use="optional"/>
+	</xs:complexType>
+</xs:schema>

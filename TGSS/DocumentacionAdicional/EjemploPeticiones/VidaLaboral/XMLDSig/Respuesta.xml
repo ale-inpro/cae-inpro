@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:ns2="http://intermediacion.redsara.es/scsp/esquemas/V3/respuesta" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><soapenv:Header><ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">
+<ds:SignedInfo>
+<ds:CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>
+<ds:SignatureMethod Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha1"/>
+<ds:Reference URI="#Body">
+<ds:Transforms>
+<ds:Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>
+</ds:Transforms>
+<ds:DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha1"/>
+<ds:DigestValue>FhOLXMFRIa0RXveIfrqryBASWZk=</ds:DigestValue>
+</ds:Reference>
+</ds:SignedInfo>
+<ds:SignatureValue>
+RMr+zRe3BDPeX294M8yJkwG53WgBiZXrxR5lG4yGMt/dn70NHpWzAVURyRk+Egj8CY8UTv7d6mk0
+IDD/0YXtjcbYUdnmQGTL3wDryfipVBfjlbpqe1rVbuoU4tUYZQSeAnmqdS19RJD4UQHhKEk8Kh0d
+dqZJ4BHSycwKkaUpFjPPw7i8ymEXny1wCwZ7SvTL7vAe/ttIP82bBmEgO396d1aQFLBd2padoWmg
+qY5e1KkMcvUk1R3WibWljCUG7nDixz6YAm2h4JidAm+UyaXKOXy+WtKBof0Ya7ZTq3dSardev+Kq
+TAZkdvJBRJN80k/k2QYoIu0jiFqMbE/avYVzqw==
+</ds:SignatureValue>
+<ds:KeyInfo>
+<ds:X509Data>
+<ds:X509Certificate>
+MIIGJTCCBQ2gAwIBAgIQMKphM3IuYCRWpfwxJ4WOXzANBgkqhkiG9w0BAQsFADBHMQswCQYDVQQG
+EwJFUzERMA8GA1UECgwIRk5NVC1SQ00xJTAjBgNVBAsMHEFDIENvbXBvbmVudGVzIEluZm9ybcOh
+dGljb3MwHhcNMTYwMTI1MTA0MjU3WhcNMTkwMTI1MTA0MjU2WjCB7DELMAkGA1UEBhMCRVMxDzAN
+BgNVBAcMBk1BRFJJRDE8MDoGA1UECgwzTUlOSVNURVJJTyBERSBIQUNJRU5EQSBZIEFETUlOSVNU
+UkFDSU9ORVMgUMOaQkxJQ0FTMUswSQYDVQQLDEJESVJFQ0NJw5NOIERFIFRFQ05PTE9Hw41BUyBE
+RSBMQSBJTkZPUk1BQ0nDk04gWSBMQVMgQ09NVU5JQ0FDSU9ORVMxEjAQBgNVBAUTCVMyODMzMDAy
+RTEtMCsGA1UEAwwkUExBVEFGT1JNQSBERSBJTlRFUk1FRElBQ0lPTi1QUlVFQkFTMIIBIjANBgkq
+hkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAhicqzbei51EUQMAbsxFCoFtDmZtS0mDyBWy0V3tRotRk
+rKcXZeJCdxdLTbFW98wsqsbSn8Bm6oMHRAKAQNmmjkyooGYeM/NGlhIOiZqbZTFoVelvNTj3IMlA
+hcU8QOn8xsDmM9WAgcB2x4mcJ7gPpg4rOO6DkQ6hZkrMiiLYv4QZ8n46Kxzoz9xbXJgcZrVbmyUd
+/qQpMwJpkb7txOdaRM+phsgDrGnJ+MaADRUeMZb5hddIqPM7g3WNPtT/K17UUjlDEKHj6fp+UbkZ
+w30gT8Cq+7qODbh1eWnij32jLAmXlrYsEkBctpf8S7WFHJjbhaw33HImlmr/VfpEjbiWtQIDAQAB
+o4ICZTCCAmEwCQYDVR0TBAIwADCBgQYIKwYBBQUHAQEEdTBzMDsGCCsGAQUFBzABhi9odHRwOi8v
+b2NzcGNvbXAuY2VydC5mbm10LmVzL29jc3AvT2NzcFJlc3BvbmRlcjA0BggrBgEFBQcwAoYoaHR0
+cDovL3d3dy5jZXJ0LmZubXQuZXMvY2VydHMvQUNDT01QLmNydDBEBgNVHSAEPTA7MDkGCisGAQQB
+rGYDCQIwKzApBggrBgEFBQcCARYdaHR0cDovL3d3dy5jZXJ0LmZubXQuZXMvZHBjcy8wQgYDVR0R
+BDswOaQ3MDUxMzAxBgkrBgEEAaxmAQgMJFBMQVRBRk9STUEgREUgSU5URVJNRURJQUNJT04tUFJV
+RUJBUzATBgNVHSUEDDAKBggrBgEFBQcDAjAOBgNVHQ8BAf8EBAMCBLAwHQYDVR0OBBYEFDmySdNx
+QG2EVObybGhCqcXzR98BMB8GA1UdIwQYMBaAFBn4WC8U1qbMmwSYCA1M16sAp4NlMIHgBgNVHR8E
+gdgwgdUwgdKggc+ggcyGgZ5sZGFwOi8vbGRhcGNvbXAuY2VydC5mbm10LmVzL0NOPUNSTDEsT1U9
+QUMlMjBDb21wb25lbnRlcyUyMEluZm9ybWF0aWNvcyxPPUZOTVQtUkNNLEM9RVM/Y2VydGlmaWNh
+dGVSZXZvY2F0aW9uTGlzdDtiaW5hcnk/YmFzZT9vYmplY3RjbGFzcz1jUkxEaXN0cmlidXRpb25Q
+b2ludIYpaHR0cDovL3d3dy5jZXJ0LmZubXQuZXMvY3Jsc2NvbXAvQ1JMMS5jcmwwDQYJKoZIhvcN
+AQELBQADggEBAIvfqIer2TbSZFWkfuRBg56f8L4Pt2kLYKiG+1uWZmSXkbB9u5VHcaR2Xw/jqwJ/
+gLY3sJQ/akh5jZfXo1SuQAycuM3aAIl+H0bAKv/0EDaOko0QXnvSqsoaWZywnMvSD/cdMBcOxQ8H
+/KgqlrkKHKr6QrakamkA5X7zNTMsi5FhnBt3VD5/bIoAFH94MXx18mL9DOqbl8OeYozWDryPxkZq
+hkI6Ci595hBUeKRn5PENnS/+palVZ2K6AvbK2wVJElKb7ldyRZmNENF5Wg7PGOVIN1PpMfKtNNfq
+HudSJmVgHFFi+0JFRj92PDCAwukN+h9Mqu744XxoVjJZgGgvJF0=
+</ds:X509Certificate>
+</ds:X509Data>
+<ds:KeyValue>
+<ds:RSAKeyValue>
+<ds:Modulus>
+hicqzbei51EUQMAbsxFCoFtDmZtS0mDyBWy0V3tRotRkrKcXZeJCdxdLTbFW98wsqsbSn8Bm6oMH
+RAKAQNmmjkyooGYeM/NGlhIOiZqbZTFoVelvNTj3IMlAhcU8QOn8xsDmM9WAgcB2x4mcJ7gPpg4r
+OO6DkQ6hZkrMiiLYv4QZ8n46Kxzoz9xbXJgcZrVbmyUd/qQpMwJpkb7txOdaRM+phsgDrGnJ+MaA
+DRUeMZb5hddIqPM7g3WNPtT/K17UUjlDEKHj6fp+UbkZw30gT8Cq+7qODbh1eWnij32jLAmXlrYs
+EkBctpf8S7WFHJjbhaw33HImlmr/VfpEjbiWtQ==
+</ds:Modulus>
+<ds:Exponent>AQAB</ds:Exponent>
+</ds:RSAKeyValue>
+</ds:KeyValue>
+</ds:KeyInfo>
+</ds:Signature></soapenv:Header><soapenv:Body Id="Body"><ns2:Respuesta><ns2:Atributos><ns2:IdPeticion>0340_SPP_QA_MH_TGSSVL_0060</ns2:IdPeticion><ns2:NumElementos>1</ns2:NumElementos><ns2:TimeStamp>2018-04-25T12:22:06.806+02:00</ns2:TimeStamp><ns2:Estado><ns2:CodigoEstado>0003</ns2:CodigoEstado><ns2:LiteralError>Tramitada</ns2:LiteralError><ns2:TiempoEstimadoRespuesta>0</ns2:TiempoEstimadoRespuesta></ns2:Estado><ns2:CodigoCertificado>SVDTGSSVIDALABORALWS01</ns2:CodigoCertificado></ns2:Atributos><ns2:Transmisiones><ns2:TransmisionDatos><ns2:DatosGenericos><ns2:Emisor><ns2:NifEmisor>Q2827003A</ns2:NifEmisor><ns2:NombreEmisor>Tesorería General de la Seguridad Social</ns2:NombreEmisor></ns2:Emisor><ns2:Solicitante><ns2:IdentificadorSolicitante>S2833002E</ns2:IdentificadorSolicitante><ns2:NombreSolicitante>MINISTERIO DE HACIENDA Y AP</ns2:NombreSolicitante><ns2:UnidadTramitadora>SG COORD ESTUDIOS E IMPULSO ADM ELECLT(MINHAP)</ns2:UnidadTramitadora><ns2:CodigoUnidadTramitadora>EA0011744</ns2:CodigoUnidadTramitadora><ns2:Procedimiento><ns2:CodProcedimiento>SVDR_20090505_000005</ns2:CodProcedimiento><ns2:NombreProcedimiento>PRUEBAS DE INTEGRACION VIDA LABORAL</ns2:NombreProcedimiento></ns2:Procedimiento><ns2:Finalidad>PRUEBAS DE INTEGRACION VIDA LABORAL</ns2:Finalidad><ns2:Consentimiento>Si</ns2:Consentimiento><ns2:Funcionario><ns2:NombreCompletoFuncionario>JUAN ESPAÑOL ESPAÑOL</ns2:NombreCompletoFuncionario><ns2:NifFuncionario>99999999R</ns2:NifFuncionario></ns2:Funcionario><ns2:IdExpediente>EXP/16122012</ns2:IdExpediente></ns2:Solicitante><ns2:Titular><ns2:TipoDocumentacion>DNI</ns2:TipoDocumentacion><ns2:Documentacion>73800632A</ns2:Documentacion><ns2:NombreCompleto>CRISTINA LOIGORRI LOIGORRI</ns2:NombreCompleto><ns2:Nombre>CRISTINA</ns2:Nombre><ns2:Apellido1>LOIGORRI                         </ns2:Apellido1><ns2:Apellido2> LOIGORRI</ns2:Apellido2></ns2:Titular><ns2:Transmision><ns2:CodigoCertificado>SVDTGSSVIDALABORALWS01</ns2:CodigoCertificado><ns2:IdSolicitud>0340_SPP_QA_MH_TGSSVL_0060</ns2:IdSolicitud><ns2:IdTransmision>AFVSPP0000000004800</ns2:IdTransmision><ns2:FechaGeneracion>2018-04-25</ns2:FechaGeneracion></ns2:Transmision></ns2:DatosGenericos><ns1:DatosEspecificos xmlns:ns1="http://intermediacion.redsara.es/scsp/esquemas/datosespecificos"><ns1:Retorno><ns1:Estado><ns1:CodigoEstado>0000</ns1:CodigoEstado><ns1:Literal>Operacion Correcta</ns1:Literal></ns1:Estado><ns1:Consulta><ns1:FechaDesde>2018-01-01</ns1:FechaDesde><ns1:FechaHasta>2018-04-25</ns1:FechaHasta></ns1:Consulta><ns1:VidaLaboral><ns1:NumeroSituaciones>2</ns1:NumeroSituaciones><ns1:Cabecera><ns1:ListaNumerosAfiliacion><ns1:NumeroAfiliacion>280280527125</ns1:NumeroAfiliacion><ns1:NumeroAfiliacion>280325755696</ns1:NumeroAfiliacion><ns1:NumeroAfiliacion>280000527127</ns1:NumeroAfiliacion></ns1:ListaNumerosAfiliacion><ns1:FechaNacimiento>1955-02-06</ns1:FechaNacimiento><ns1:TransferenciaDerechosCEE>S</ns1:TransferenciaDerechosCEE></ns1:Cabecera><ns1:Resumen><ns1:Totales><ns1:TotalDiasAlta>230</ns1:TotalDiasAlta><ns1:AniosAlta>0</ns1:AniosAlta><ns1:MesesAlta>7</ns1:MesesAlta><ns1:DiasAlta>18</ns1:DiasAlta><ns1:DiasPluriempleo>115</ns1:DiasPluriempleo></ns1:Totales><ns1:Pluriempleo><ns1:TotalDiasAlta>115</ns1:TotalDiasAlta><ns1:AniosAlta>0</ns1:AniosAlta><ns1:MesesAlta>3</ns1:MesesAlta><ns1:DiasAlta>25</ns1:DiasAlta></ns1:Pluriempleo></ns1:Resumen><ns1:ListaSituaciones><ns1:Situacion><ns1:NumeroAfiliacion>280280527125</ns1:NumeroAfiliacion><ns1:Regimen>CARBON</ns1:Regimen><ns1:Empresa>SUB.DESEMPLEO 52/55 AÑOS-FIJOS DISC.EXTI</ns1:Empresa><ns1:FechaAlta>2007-02-07</ns1:FechaAlta><ns1:FechaEfectos>2007-02-07</ns1:FechaEfectos><ns1:GrupoCotizacion>09</ns1:GrupoCotizacion><ns1:DiasAlta>4096</ns1:DiasAlta></ns1:Situacion><ns1:Situacion><ns1:NumeroAfiliacion>280280527125</ns1:NumeroAfiliacion><ns1:Empresa>CONVENIO ESPECIAL</ns1:Empresa><ns1:FechaAlta>2007-02-07</ns1:FechaAlta><ns1:FechaEfectos>2007-02-07</ns1:FechaEfectos><ns1:GrupoCotizacion>09</ns1:GrupoCotizacion><ns1:DiasAlta>4096</ns1:DiasAlta></ns1:Situacion></ns1:ListaSituaciones></ns1:VidaLaboral></ns1:Retorno></ns1:DatosEspecificos></ns2:TransmisionDatos></ns2:Transmisiones></ns2:Respuesta></soapenv:Body></soapenv:Envelope>
