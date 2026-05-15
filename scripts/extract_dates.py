@@ -24,6 +24,25 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='repla
 # ─────────────────────────────────────────────────────────────────────────────
 # RESULTADO VACÍO POR DEFECTO
 # ─────────────────────────────────────────────────────────────────────────────
+def user_facing_notes(raw: str) -> str:
+    """Notas cortas en español para guardar en BD (sin prefijos de motor)."""
+    s = (raw or '').strip()
+    if not s:
+        return 'No se ha podido validar el documento de forma automática.'
+    low = s.lower()
+    if 'no se encontr' in low and 'información relevante' in low or 'informacion relevante' in low:
+        return 'No se han detectado fechas ni datos de vigencia en el archivo.'
+    if 'api key' in low:
+        return 'El análisis automático no está disponible en este momento.'
+    if 'no se pudo convertir' in low:
+        return 'El formato del archivo no permite extraer fechas automáticamente.'
+    if 'vision api error' in low:
+        return 'No se ha podido analizar el documento automáticamente.'
+    if len(s) > 220:
+        s = s[:217] + '…'
+    return s
+
+
 def manual_result(notes: str, extracted_text: str = '') -> dict:
     return {
         'ok': True,
@@ -31,7 +50,7 @@ def manual_result(notes: str, extracted_text: str = '') -> dict:
         'confidence': 0.0,
         'issue_date': None,
         'expires_at': None,
-        'notes': notes,
+        'notes': user_facing_notes(notes),
         'extracted_text': extracted_text[:3000],
         'extraction_method': 'none',
     }
@@ -285,11 +304,11 @@ def _first_date(patterns: list, text: str, settings: dict) -> 'str | None':
 def extract_dates_vision(file_path: str, doc_type: str, mime: str) -> dict:
     api_key = _read_api_key()
     if not api_key:
-        return manual_result('Vision fallback: API key no disponible.')
+        return manual_result('El análisis automático no está disponible en este momento.')
 
     image_b64, image_mime = _to_base64_image(file_path, mime)
     if not image_b64:
-        return manual_result('No se pudo convertir el documento a imagen para Vision.')
+        return manual_result('El formato del archivo no permite extraer fechas automáticamente.')
 
     prompt = f"""Analiza este documento de tipo: {doc_type}
 
@@ -381,7 +400,7 @@ REGLAS CRÍTICAS:
             'confidence': float(parsed.get('confidence', 0.5)),
             'issue_date': parsed.get('issue_date'),
             'expires_at': parsed.get('expires_at'),
-            'notes':      f"[Vision gpt-4o] {parsed.get('notes', '')}",
+            'notes':      user_facing_notes(str(parsed.get('notes', '') or '')),
         }
 
     except Exception as e:

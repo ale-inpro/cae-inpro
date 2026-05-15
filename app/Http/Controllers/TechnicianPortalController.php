@@ -9,6 +9,8 @@ use App\Core\Database;
 use PDO;
 use App\Services\Mailer;
 use App\Services\DocumentIntakeAiService;
+use App\Services\CaeDocumentSlotService;
+use App\Services\CaeAeatUploadHook;
 
 final class TechnicianPortalController extends Controller
 {
@@ -50,6 +52,8 @@ final class TechnicianPortalController extends Controller
             $ins->execute(['tid' => $tid]);
             $caeRecordId = (int) $ins->fetchColumn();
         }
+
+        $appCfg = $this->appConfig();
 
         $files    = $_FILES['files'] ?? [];
         $uploaded = 0;
@@ -137,7 +141,22 @@ final class TechnicianPortalController extends Controller
                 ]);
 
                 if (!$needsManual) {
-                    $pdo->prepare("
+                    try {
+                        $newDocId = (int) CaeDocumentSlotService::replaceActiveSupportingSlot(
+                            $pdo,
+                            $caeRecordId,
+                            $docTypeId,
+                            function () use (
+                                $pdo,
+                                $caeRecordId,
+                                $docTypeId,
+                                $originalName,
+                                $storagePath,
+                                $mimeType,
+                                $fileSize,
+                                $expiresAt
+                            ): int {
+                                $pdo->prepare("
                         INSERT INTO cae_documents
                         (cae_record_id, document_type_id, original_filename, storage_path,
                         mime_type, file_size, uploaded_by_user_id,
@@ -147,14 +166,31 @@ final class TechnicianPortalController extends Controller
                         :mime, :size, NULL,
                         NOW(), TRUE, FALSE, :expires_at, NOW(), NOW())
                     ")->execute([
-                        'cae_id' => $caeRecordId,
-                        'dtype' => $docTypeId,
-                        'orig' => $originalName,
-                        'path' => $storagePath,
-                        'mime' => $mimeType,
-                        'size' => $fileSize,
-                        'expires_at' => $expiresAt,
-                    ]);
+                                    'cae_id' => $caeRecordId,
+                                    'dtype' => $docTypeId,
+                                    'orig' => $originalName,
+                                    'path' => $storagePath,
+                                    'mime' => $mimeType,
+                                    'size' => $fileSize,
+                                    'expires_at' => $expiresAt,
+                                ]);
+                                return (int) $pdo->lastInsertId();
+                            }
+                        );
+                        CaeAeatUploadHook::afterSupportingPdfPersisted(
+                            $pdo,
+                            $appCfg,
+                            $newDocId,
+                            $docTypeId,
+                            $originalName
+                        );
+                    } catch (\Throwable $e) {
+                        error_log('[TechnicianPortalController::upload] slot ' . $e->getMessage());
+                        $errors[] = 'No se pudo publicar el documento complementario para «'
+                            . $originalName
+                            . '». Inténtelo de nuevo o contacte al administrador.';
+                        continue;
+                    }
                 }
 
                 $uploaded++;

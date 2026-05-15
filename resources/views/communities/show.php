@@ -359,19 +359,43 @@ $caeBadge = static function (string $status): string {
                 <?php endif; ?>
 
                 <?php if (!$isAdmin): ?>
-                    <!-- Formulario de solicitud de informe RL (solo gestor) -->
-                    <section class="rl-empty-state mb-3">
-                        <p class="mb-1 fw-semibold">Solicitar informe de riesgos laborales</p>
-                        <p class="mb-3 text-muted small">Si necesitas el informe RL de esta comunidad, puedes solicitárselo directamente al administrador.</p>
-                        <form method="post" action="<?= $ab ?>/comunidades/<?= (int) ($c['id'] ?? 0) ?>/riesgos/request">
-                            <div class="mb-2">
-                                <textarea name="request_notes" class="form-control form-control-sm" rows="2" placeholder="Notas para el administrador (opcional)"></textarea>
-                            </div>
-                            <button class="btn btn-warning btn-sm" type="submit">
-                                <i class="bi bi-send me-1"></i> Solicitar informe RL al admin
-                            </button>
-                        </form>
-                    </section>
+                    <div class="rl-admin-grid mb-3">
+                        <section class="rl-card">
+                            <h4 class="rl-card-title">Subir informe RL</h4>
+                            <p class="rl-card-sub mb-3">
+                                Puedes cargar tú mismo el informe de riesgos laborales de esta comunidad.
+                                <?php if (!empty($risk) && !empty($risk['report_path'])): ?>
+                                    Al subir uno nuevo, sustituirá el archivo actual.
+                                <?php endif; ?>
+                            </p>
+                            <form method="post" enctype="multipart/form-data"
+                                  action="<?= $ab ?>/comunidades/<?= (int) ($c['id'] ?? 0) ?>/riesgos/upload"
+                                  class="row g-2">
+                                <div class="col-xl-8">
+                                    <input type="file" name="report_file" class="form-control" accept=".pdf,application/pdf" required>
+                                </div>
+                                <div class="col-xl-4">
+                                    <button class="btn btn-success w-100" type="submit">
+                                        <i class="bi bi-upload me-1"></i> Subir informe
+                                    </button>
+                                </div>
+                            </form>
+                        </section>
+
+                        <section class="rl-card">
+                            <h4 class="rl-card-title">Solicitar al administrador</h4>
+                            <p class="rl-card-sub mb-3">Si prefieres que lo gestione el administrador, envía una solicitud.</p>
+                            <form method="post" action="<?= $ab ?>/comunidades/<?= (int) ($c['id'] ?? 0) ?>/riesgos/request">
+                                <div class="mb-2">
+                                    <textarea name="request_notes" class="form-control form-control-sm" rows="2"
+                                        placeholder="Notas para el administrador (opcional)"></textarea>
+                                </div>
+                                <button class="btn btn-warning btn-sm w-100" type="submit">
+                                    <i class="bi bi-send me-1"></i> Solicitar informe RL al admin
+                                </button>
+                            </form>
+                        </section>
+                    </div>
                 <?php endif; ?>
 
                 <?php if ($risk): ?>

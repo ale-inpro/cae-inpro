@@ -14,7 +14,7 @@ $notifUrl = static function (array $n) use ($ab, $role): string {
     $type = (string) ($n['type'] ?? '');
     $id   = (int) ($n['id'] ?? 0);
 
-    if ($id > 0 && $type === 'rl_request_created') {
+    if ($id > 0 && in_array($type, ['rl_request_created', 'rl_report_uploaded_by_gestor'], true)) {
         // Pasa por el endpoint que marca como leída y luego redirige
         return $ab . '/notificaciones/' . $id . '/open';
     }
@@ -71,6 +71,7 @@ $notifUrl = static function (array $n) use ($ab, $role): string {
                     $icon = match ((string) ($n['type'] ?? '')) {
                         'rl_request_created'  => 'bi-file-earmark-diff text-warning',
                         'rl_report_uploaded'  => 'bi-file-earmark-arrow-up text-primary',
+                        'rl_report_uploaded_by_gestor' => 'bi-file-earmark-arrow-up text-success',
                         'rl_report_completed' => 'bi-file-earmark-check text-success',
                         'rl_request_rejected',
                         'rl_report_rejected'  => 'bi-x-circle text-danger',

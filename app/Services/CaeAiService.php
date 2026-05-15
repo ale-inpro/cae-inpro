@@ -10,77 +10,49 @@ final class CaeAiService
     // PASO 1: PHP decide el estado — lógica determinista, sin IA
     // Mismos documentos → mismo resultado siempre
     // ─────────────────────────────────────────────────────────────
-
+    
     /** @param array<int, array<string,mixed>> $sources */
     public static function determineStatus(array $sources): array
     {
-        $filenames = array_map(
-            static fn($s) => strtolower((string) ($s['original_filename'] ?? '')),
-            $sources
-        );
+        // CaeAiController ya exige CaeReadinessService antes de llamar aquí.
+        // Solo alineamos el estado del PDF con los cuatro tipos canónicos (sin heurísticas de texto).
+        if ($sources === []) {
+            return [
+                'status'   => 'pending_docs',
+                'missing'  => CaeReadinessService::REQUIRED_SUPPORTING_DOC_NAMES,
+                'reason'   => 'No hay documentos complementarios cargados.',
+                'has_text' => false,
+            ];
+        }
 
-        $hasPolizaRC = (bool) preg_grep('/p[oó]liza|responsabilidad.{0,10}civil/i', $filenames);
-        $hasSPA      = (bool) preg_grep('/prevenci[oó]n|spa|servicio.{0,10}prevenci[oó]n/i', $filenames);
+        $present = [];
+        foreach ($sources as $s) {
+            $n = trim((string) ($s['document_type_name'] ?? ''));
+            if ($n !== '') {
+                $present[$n] = true;
+            }
+        }
 
         $missing = [];
-        if (!$hasPolizaRC) $missing[] = 'Póliza de Responsabilidad Civil';
-        if (!$hasSPA)      $missing[] = 'Certificado de Prevención de Riesgos Laborales';
+        foreach (CaeReadinessService::REQUIRED_SUPPORTING_DOC_NAMES as $req) {
+            if (!isset($present[$req])) {
+                $missing[] = $req;
+            }
+        }
 
         if ($missing !== []) {
             return [
                 'status'   => 'pending_docs',
                 'missing'  => $missing,
-                'reason'   => 'Faltan documentos obligatorios: ' . implode(', ', $missing) . '.',
+                'reason'   => 'Faltan tipos de documento obligatorios: ' . implode(', ', $missing) . '.',
                 'has_text' => false,
             ];
         }
 
-        // Regla 2: verificar si algún documento es un escaneo sin texto extraíble
-        $hasNoText  = false;
-        $alertWords = ['caducado', 'anulado', 'vencido', 'cancelado', 'revocado', 'baja'];
-        $alertsFound = [];
-
-        foreach ($sources as $s) {
-            $text = trim((string) ($s['extracted_text'] ?? ''));
-            if ($text === '' || str_contains($text, '[Sin texto extraído')) {
-                $hasNoText = true;
-            } else {
-                $lower = strtolower($text);
-                foreach ($alertWords as $kw) {
-                    if (str_contains($lower, $kw)) {
-                        $alertsFound[] = $kw;
-                    }
-                }
-            }
-        }
-
-        // Regla 3: si hay escaneos → in_review (no verificable automáticamente)
-        if ($hasNoText) {
-            return [
-                'status'   => 'in_review',
-                'missing'  => [],
-                'reason'   => 'Documentos presentes pero no verificables automáticamente (archivos escaneados o imágenes). Se requiere revisión manual.',
-                'has_text' => false,
-            ];
-        }
-
-        // Regla 4: si hay palabras de alerta en el texto → in_review
-        if ($alertsFound !== []) {
-            $unique = array_unique($alertsFound);
-            return [
-                'status'   => 'in_review',
-                'missing'  => [],
-                'reason'   => 'Se detectaron términos de alerta en los documentos (' . implode(', ', $unique) . '). Revisión manual recomendada.',
-                'has_text' => true,
-                'alerts'   => $unique,
-            ];
-        }
-
-        // Regla 5: todo correcto → aprobado
         return [
             'status'   => 'approved',
             'missing'  => [],
-            'reason'   => 'Documentación completa y verificada. Todos los documentos obligatorios están presentes y son legibles.',
+            'reason'   => 'Documentación conforme a las reglas del sistema (vigencia y AEAT en Hacienda ya validadas al generar).',
             'has_text' => true,
         ];
     }

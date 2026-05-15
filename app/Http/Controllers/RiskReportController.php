@@ -126,7 +126,12 @@ final class RiskReportController extends Controller
     public function uploadReport(array $params = []): void
     {
         $this->assertAreaAccess();
-        $this->requireAdmin();
+        $role = (string) ($_SESSION['user']['role'] ?? '');
+        if (!in_array($role, ['admin', 'gestor'], true)) {
+            http_response_code(403);
+            $this->respond('Acceso denegado');
+            exit;
+        }
 
         $communityId = (int) ($params['id'] ?? 0);
         if ($communityId <= 0 || empty($_FILES['report_file'])) {
@@ -171,22 +176,34 @@ final class RiskReportController extends Controller
 
         $relativePath = '/uploads/risk-reports/' . $communityId . '/' . $finalName;
 
-        $stmt = $pdo->prepare("SELECT id, notes FROM community_risk_reports WHERE community_id = :cid LIMIT 1");
+        $uploadStatus = ($role === 'gestor') ? 'completed' : 'in_progress';
+        $uploadCompletedAt = ($role === 'gestor') ? date('Y-m-d H:i:s') : null;
+
+        $stmt = $pdo->prepare("SELECT id, notes, report_path FROM community_risk_reports WHERE community_id = :cid LIMIT 1");
         $stmt->execute(['cid' => $communityId]);
         $existing = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($existing) {
+            $oldPath = (string) ($existing['report_path'] ?? '');
+            if ($oldPath !== '') {
+                $absoluteOld = dirname(__DIR__, 3) . '/public' . $oldPath;
+                if (is_file($absoluteOld)) {
+                    @unlink($absoluteOld);
+                }
+            }
             $stmt = $pdo->prepare("
                 UPDATE community_risk_reports
                 SET report_filename = :filename,
                     report_path = :path,
-                    status = 'in_progress',
-                    completed_at = NULL
+                    status = :status,
+                    completed_at = :completed_at
                 WHERE id = :id
             ");
             $stmt->execute([
                 'filename' => $originalName,
                 'path' => $relativePath,
+                'status' => $uploadStatus,
+                'completed_at' => $uploadCompletedAt,
                 'id' => (int) $existing['id'],
             ]);
         } else {
@@ -194,32 +211,72 @@ final class RiskReportController extends Controller
                 INSERT INTO community_risk_reports
                 (community_id, status, report_filename, report_path, notes, completed_at)
                 VALUES
-                (:cid, 'in_progress', :filename, :path, :notes, NULL)
+                (:cid, :status, :filename, :path, :notes, :completed_at)
             ");
             $stmt->execute([
                 'cid' => $communityId,
+                'status' => $uploadStatus,
                 'filename' => $originalName,
                 'path' => $relativePath,
                 'notes' => '',
+                'completed_at' => $uploadCompletedAt,
             ]);
         }
 
-        // Notificar al gestor de la comunidad que el informe ya está disponible
-        $this->notifyGestorsOfCommunity($pdo, $communityId,
-            'rl_report_uploaded',
-            'Informe RL disponible',
-            'El administrador ha subido el informe de Riesgos Laborales de tu comunidad.',
-            ['community_id' => $communityId]
-        );
+        if ($role === 'admin') {
+            $this->notifyGestorsOfCommunity($pdo, $communityId,
+                'rl_report_uploaded',
+                'Informe RL disponible',
+                'El administrador ha subido el informe de Riesgos Laborales de tu comunidad.',
+                ['community_id' => $communityId]
+            );
 
-        // Email a los gestores de la comunidad
-        $this->sendEmailToGestorsOfCommunity(
-            $pdo,
-            $communityId,
-            'Informe RL disponible · accede al panel',
-            'Informe RL disponible',
-            'El administrador ha subido el informe de Riesgos Laborales de tu comunidad. Ya puedes verlo y descargarlo desde el panel.'
-        );
+            $this->sendEmailToGestorsOfCommunity(
+                $pdo,
+                $communityId,
+                'Informe RL disponible · accede al panel',
+                'Informe RL disponible',
+                'El administrador ha subido el informe de Riesgos Laborales de tu comunidad. Ya puedes verlo y descargarlo desde el panel.'
+            );
+        } else {
+            $commData = $pdo->prepare("SELECT name FROM communities WHERE id = :id LIMIT 1");
+            $commData->execute(['id' => $communityId]);
+            $communityName = (string) ($commData->fetchColumn() ?: 'N/D');
+            $gestorName = htmlspecialchars((string) ($_SESSION['user']['full_name'] ?? 'Un gestor'));
+
+            $adminIds = $pdo
+                ->query("SELECT id FROM users WHERE role = 'admin' AND is_active = TRUE")
+                ->fetchAll(PDO::FETCH_COLUMN);
+
+            foreach ($adminIds as $adminId) {
+                $this->createNotification(
+                    (int) $adminId,
+                    'rl_report_uploaded_by_gestor',
+                    'Informe RL subido por gestor',
+                    'Un gestor ha subido el informe de Riesgos Laborales de la comunidad «' . $communityName . '».',
+                    ['community_id' => $communityId]
+                );
+
+                $adminData = $pdo->prepare("SELECT email, full_name FROM users WHERE id = :id LIMIT 1");
+                $adminData->execute(['id' => (int) $adminId]);
+                $adminUser = $adminData->fetch(PDO::FETCH_ASSOC);
+
+                if (!empty($adminUser['email'])) {
+                    $body = "
+                        <h2>Informe RL subido por gestor</h2>
+                        <p>El gestor <strong>{$gestorName}</strong> ha subido el informe de Riesgos Laborales
+                        de la comunidad <strong>" . htmlspecialchars($communityName) . "</strong>.</p>
+                        <hr class='divider'>
+                        <p>Puedes revisarlo en el panel de administración.</p>
+                    ";
+                    Mailer::send(
+                        (string) $adminUser['email'],
+                        'Informe RL subido por gestor · ' . $communityName,
+                        Mailer::template('Informe RL subido', $body)
+                    );
+                }
+            }
+        }
 
         // Al subir el informe, cerrar TODAS las solicitudes pendientes de esta comunidad
         $pdo->prepare("
@@ -228,7 +285,10 @@ final class RiskReportController extends Controller
             WHERE community_id = :cid AND status IN ('requested', 'in_progress')
         ")->execute(['cid' => $communityId]);
 
-        $this->flash('Informe RL subido correctamente.', 'success', 'Correcto');
+        $flashMsg = ($role === 'gestor')
+            ? 'Informe RL subido correctamente. Ya está disponible para tu comunidad.'
+            : 'Informe RL subido correctamente.';
+        $this->flash($flashMsg, 'success', 'Correcto');
         header('Location: ' . $this->areaBaseUrl() . '/comunidades/' . $communityId . '#c-rl');
         exit;
     }

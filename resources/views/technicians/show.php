@@ -1,4 +1,7 @@
 <?php declare(strict_types=1);
+
+use App\Services\DocumentIntakePresentationService;
+
 $ab = htmlspecialchars($areaBaseUrl ?? '/cae-inpro/public/gestor');
 $t = $tech ?? [];
 $name = trim(((string) ($t['first_name'] ?? '')) . ' ' . ((string) ($t['last_name'] ?? '')));
@@ -6,6 +9,7 @@ $current = $currentCae ?? null;
 $history = $caeHistory ?? [];
 $docs = $caeDocuments ?? [];
 $pendingIntake = $pendingIntakeDocs ?? [];
+$activeSupportingFilenameByDocTypeId = $activeSupportingFilenameByDocTypeId ?? [];
 $isAdmin = (($area ?? 'gestor') === 'admin');
 $currentUrl = $ab . '/tecnicos/' . (int) ($t['id'] ?? 0) . '#pane-info';
 $editUrl = $ab . '/tecnicos/' . (int) ($t['id'] ?? 0) . '/edit?return_to=' . urlencode($currentUrl);
@@ -161,14 +165,23 @@ $statusBadge = static function (string $status): string {
             <div class="subpanel mb-3">
                 <div class="subpanel-h">Subir documento complementario</div>
                 <div class="subpanel-b">
-                    <form method="post" enctype="multipart/form-data" action="<?= $ab ?>/cae/<?= (int) ($current['id'] ?? 0) ?>/documentos" class="row g-2">
+                    <form id="form-tech-upload-supporting" method="post" enctype="multipart/form-data" action="<?= $ab ?>/cae/<?= (int) ($current['id'] ?? 0) ?>/documentos" class="row g-2">
                         <input type="hidden" name="return_to" value="<?= $ab ?>/tecnicos/<?= (int) ($t['id'] ?? 0) ?>#pane-docs">
                         <input type="hidden" name="upload_mode" value="supporting">
                         <div class="col-md-4">
-                            <select name="document_type_id" class="form-select" required>
-                                <option value="">Tipo de documento</option>
+                            <select name="document_type_id" id="tech-upload-doc-type" class="form-select" required>
+                                <option value="" data-active-filename="">Tipo de documento</option>
                                 <?php foreach ($types as $dt): ?>
-                                    <option value="<?= (int) ($dt['id'] ?? 0) ?>"><?= htmlspecialchars((string) ($dt['name'] ?? '')) ?></option>
+                                    <?php
+                                        $dtypeId = (int) ($dt['id'] ?? 0);
+                                        $prevFn = isset($activeSupportingFilenameByDocTypeId[$dtypeId])
+                                            ? trim((string) $activeSupportingFilenameByDocTypeId[$dtypeId])
+                                            : '';
+                                    ?>
+                                    <option value="<?= $dtypeId ?>"
+                                            data-active-filename="<?= htmlspecialchars($prevFn, ENT_QUOTES, 'UTF-8') ?>">
+                                        <?= htmlspecialchars((string) ($dt['name'] ?? '')) ?>
+                                    </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -184,77 +197,75 @@ $statusBadge = static function (string $status): string {
         <?php endif; ?>
 
         <?php if ($isAdmin && !empty($pendingIntake)): ?>
-            <div class="subpanel mb-3 border-warning">
+            <div class="subpanel mb-3 border-warning doc-panel doc-panel--pending">
                 <div class="subpanel-h d-flex align-items-center justify-content-between">
-                    <span><i class="bi bi-hourglass-split me-2"></i>Documentos pendientes de revisión manual</span>
+                    <span><i class="bi bi-hourglass-split me-2"></i>Documentos pendientes de revisión</span>
                     <span class="badge text-bg-warning text-dark"><?= (int) count($pendingIntake) ?></span>
                 </div>
                 <div class="subpanel-b">
+                    <p class="doc-panel-intro mb-3">
+                        Estos archivos no se han validado automáticamente. Indica la <strong>fecha de caducidad</strong> y aprueba para publicarlos.
+                        El estado <strong>Válido para CAE</strong> aparecerá en la tabla inferior.
+                    </p>
                     <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-0 table-mobile-cards">
-                            <thead><tr><th>Documento</th><th>Archivo</th><th>IA</th><th>Acciones</th></tr></thead>
+                        <table class="table table-sm align-middle mb-0 table-mobile-cards doc-table">
+                            <thead>
+                                <tr>
+                                    <th>Documento</th>
+                                    <th>Archivo</th>
+                                    <th>Motivo</th>
+                                    <th>Análisis</th>
+                                    <th class="text-end">Acciones</th>
+                                </tr>
+                            </thead>
                             <tbody>
                             <?php foreach ($pendingIntake as $p): ?>
+                                <?php
+                                    $pres = $p['_present'] ?? DocumentIntakePresentationService::presentPendingIntake($p);
+                                    $hasAiExpiry = !empty(trim((string) ($p['ai_expires_at'] ?? '')));
+                                    $aiExpiryVal = $hasAiExpiry ? htmlspecialchars((string) $p['ai_expires_at']) : '';
+                                    $docNameForExpiry = (string) ($p['document_name'] ?? '');
+                                    $needsForcedDate = (!$hasAiExpiry || str_contains($docNameForExpiry, 'Prevención'));
+                                ?>
                                 <tr>
-                                    <td data-label="Documento"><?= htmlspecialchars((string) ($p['document_name'] ?? '-')) ?></td>
+                                    <td data-label="Documento" class="doc-table-type"><?= htmlspecialchars((string) ($p['document_name'] ?? '-')) ?></td>
                                     <td data-label="Archivo">
-                                        <div class="fw-semibold"><?= htmlspecialchars((string) ($p['original_filename'] ?? '-')) ?></div>
-                                        <div class="small text-muted">
-                                            <?php if (!empty($p['ai_notes'])): ?>
-                                                <?= htmlspecialchars((string) $p['ai_notes']) ?>
-                                            <?php else: ?>
-                                                Pendiente de validación manual.
-                                            <?php endif; ?>
+                                        <span class="doc-table-filename"><?= htmlspecialchars((string) ($p['original_filename'] ?? '-')) ?></span>
+                                    </td>
+                                    <td data-label="Motivo" class="doc-table-reason">
+                                        <?= htmlspecialchars($pres['reason'], ENT_QUOTES, 'UTF-8') ?>
+                                    </td>
+                                    <td data-label="Análisis">
+                                        <span class="badge rounded-pill <?= htmlspecialchars($pres['status_badge'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($pres['status_label'], ENT_QUOTES, 'UTF-8') ?></span>
+                                        <div class="doc-table-meta small text-muted mt-1">
+                                            Caducidad detectada: <?= htmlspecialchars($pres['expiry_label'], ENT_QUOTES, 'UTF-8') ?>
+                                            · Confianza: <?= htmlspecialchars($pres['confidence_label'], ENT_QUOTES, 'UTF-8') ?>
                                         </div>
                                     </td>
-                                    <td data-label="IA">
-                                        <div class="small">
-                                            Estado IA: <strong><?= htmlspecialchars((string) ($p['ai_status'] ?? 'manual_review')) ?></strong><br>
-                                            Conf.: <strong><?= htmlspecialchars((string) ($p['ai_confidence'] ?? '0')) ?></strong><br>
-                                            Caducidad IA: <strong><?= htmlspecialchars((string) ($p['ai_expires_at'] ?? 'N/D')) ?></strong>
-                                        </div>
-                                    </td>
-                                    <td data-label="Acciones">
-                                        <div class="table-actions">
+                                    <td data-label="Acciones" class="text-end">
+                                        <div class="table-actions intake-review-actions flex-wrap justify-content-end">
                                             <?php if (!empty($p['storage_path'])): ?>
-                                                <button
-                                                    type="button"
-                                                    class="btn btn-sm btn-outline-secondary"
-                                                    data-file-preview
+                                                <button type="button" class="btn btn-sm btn-outline-secondary intake-review-actions__btn" data-file-preview
                                                     data-file-preview-url="<?= htmlspecialchars((string) (($baseUrl ?? '') . ($p['storage_path'] ?? ''))) ?>"
                                                     data-file-preview-name="<?= htmlspecialchars((string) ($p['original_filename'] ?? 'Documento')) ?>"
-                                                    title="Ver"
-                                                ><i class="bi bi-eye"></i></button>
+                                                    title="Ver"><i class="bi bi-eye"></i></button>
                                             <?php endif; ?>
-                                            <?php
-                                                $hasAiExpiry = !empty(trim((string) ($p['ai_expires_at'] ?? '')));
-                                                $aiExpiryVal = $hasAiExpiry ? htmlspecialchars((string) $p['ai_expires_at']) : '';
-                                                $docNameForExpiry = (string) ($p['document_name'] ?? '');
-                                                // El SPA no tiene regla automática: siempre exigir fecha
-                                                $needsForcedDate = (!$hasAiExpiry || str_contains($docNameForExpiry, 'Prevención'));
-                                            ?>
-                                            <form method="post" action="<?= $ab ?>/cae/intake/<?= (int) ($p['id'] ?? 0) ?>/approve" class="d-flex align-items-center gap-1 flex-wrap">
+                                            <form method="post" action="<?= $ab ?>/cae/intake/<?= (int) ($p['id'] ?? 0) ?>/approve" class="intake-review-actions__group d-flex align-items-end gap-2 flex-wrap">
                                                 <input type="hidden" name="return_to" value="<?= $ab ?>/tecnicos/<?= (int) ($t['id'] ?? 0) ?>#pane-docs">
-                                                <div>
-                                                    <input
-                                                        type="date"
-                                                        name="manual_expires_at"
-                                                        class="form-control form-control-sm"
-                                                        value="<?= $aiExpiryVal ?>"
-                                                        title="Fecha de caducidad<?= $needsForcedDate ? ' (obligatoria)' : ' (IA: ' . $aiExpiryVal . ')' ?>"
-                                                        <?= $needsForcedDate ? 'required' : '' ?>
-                                                    >
-                                                    <?php if ($needsForcedDate): ?>
-                                                        <div class="text-danger" style="font-size:0.7rem">Obligatoria</div>
-                                                    <?php elseif ($hasAiExpiry): ?>
-                                                        <div class="text-muted" style="font-size:0.7rem">IA: <?= $aiExpiryVal ?></div>
-                                                    <?php endif; ?>
+                                                <div class="doc-approve-date">
+                                                    <label class="form-label small mb-0">Caducidad<?= $needsForcedDate ? ' *' : '' ?></label>
+                                                    <input type="date" name="manual_expires_at" class="form-control form-control-sm"
+                                                        value="<?= $aiExpiryVal ?>" <?= $needsForcedDate ? 'required' : '' ?>>
                                                 </div>
-                                                <button class="btn btn-sm btn-success" type="submit" title="Aprobar"><i class="bi bi-check2"></i></button>
+                                                <button class="btn btn-sm btn-success flex-shrink-0" type="submit" title="Aprobar y publicar">
+                                                    <i class="bi bi-check2 d-md-none"></i><span class="d-none d-md-inline">Aprobar</span>
+                                                </button>
                                             </form>
-                                            <form method="post" action="<?= $ab ?>/cae/intake/<?= (int) ($p['id'] ?? 0) ?>/reject" data-confirm="¿Rechazar este documento pendiente?">
+                                            <form method="post" action="<?= $ab ?>/cae/intake/<?= (int) ($p['id'] ?? 0) ?>/reject" class="intake-review-actions__group d-flex align-items-end" data-confirm="¿Rechazar este documento?">
                                                 <input type="hidden" name="return_to" value="<?= $ab ?>/tecnicos/<?= (int) ($t['id'] ?? 0) ?>#pane-docs">
-                                                <button class="btn btn-sm btn-outline-danger" type="submit" title="Rechazar"><i class="bi bi-x-lg"></i></button>
+                                                <button class="btn btn-sm btn-outline-danger flex-shrink-0" type="submit" title="Rechazar">
+                                                    <i class="bi bi-x-lg d-md-none"></i><span class="d-none d-md-inline">Rechazar</span>
+                                                </button>
                                             </form>
                                         </div>
                                     </td>
@@ -267,49 +278,35 @@ $statusBadge = static function (string $status): string {
             </div>
         <?php endif; ?>
 
-        <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0 table-mobile-cards">
-                <thead><tr><th>Documento</th><th>Archivo</th><th>Caduca</th><th></th></tr></thead>
-                <tbody>
+        <div class="subpanel">
+            <div class="subpanel-h">Documentos complementarios publicados</div>
+            <div class="subpanel-b">
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0 table-mobile-cards doc-table">
+                    <thead><tr><th>Documento</th><th>Archivo</th><th>Validez CAE</th><th>Detalles</th><th></th></tr></thead>
+                        <tbody>
                 <?php foreach ($docs as $d): ?>
+                    <?php
+                        $v = $d['cae_validity'] ?? null;
+                        $ok = is_array($v) && !empty($v['valid_for_cae']);
+                        $label = is_array($v) ? (string) ($v['label'] ?? ($ok ? 'Válido para CAE' : 'No válido para CAE')) : '—';
+                        $badgeClass = $ok ? 'text-bg-success' : 'text-bg-danger';
+                        $expRaw = trim((string) ($d['expires_at'] ?? ''));
+                        $reasonPrimary = \App\Services\DocumentIntakePresentationService::validityPrimaryReason(is_array($v) ? $v : null);
+                        $reasonSecondary = \App\Services\DocumentIntakePresentationService::validitySecondaryLine(is_array($v) ? $v : null, $expRaw !== '' ? $expRaw : null);
+                    ?>
                     <tr>
-                        <td data-label="Documento"><?= htmlspecialchars((string) ($d['document_name'] ?? '-')) ?></td>
-                        <td data-label="Archivo"><?= htmlspecialchars((string) ($d['original_filename'] ?? '-')) ?></td>
-                        <?php
-                            $expRaw = trim((string) ($d['expires_at'] ?? ''));
-                            $badgeClass = 'text-bg-secondary';
-                            $badgeText  = 'Sin fecha';
-
-                            if ($expRaw !== '') {
-                                $todayTs = strtotime(date('Y-m-d'));
-                                $expTs   = strtotime($expRaw);
-
-                                if ($expTs !== false) {
-                                    $daysLeft = (int) floor(($expTs - $todayTs) / 86400);
-
-                                    if ($daysLeft < 0) {
-                                        $badgeClass = 'text-bg-danger';
-                                        $badgeText  = 'Caducado';
-                                    } elseif ($daysLeft <= 15) {
-                                        $badgeClass = 'text-bg-warning text-dark';
-                                        $badgeText  = 'Próximo (' . $daysLeft . 'd)';
-                                    } else {
-                                        $badgeClass = 'text-bg-success';
-                                        $badgeText  = 'Vigente';
-                                    }
-                                }
-                            }
-                            ?>
-                            <td data-label="Caduca">
-                                <?php if ($expRaw !== ''): ?>
-                                    <div class="d-flex flex-column gap-1">
-                                        <span><?= htmlspecialchars($expRaw) ?></span>
-                                        <span class="badge <?= $badgeClass ?>"><?= htmlspecialchars($badgeText) ?></span>
-                                    </div>
-                                <?php else: ?>
-                                    <span class="badge <?= $badgeClass ?>"><?= htmlspecialchars($badgeText) ?></span>
-                                <?php endif; ?>
-                            </td>
+                        <td data-label="Documento" class="doc-table-type"><?= htmlspecialchars((string) ($d['document_name'] ?? '-')) ?></td>
+                        <td data-label="Archivo"><span class="doc-table-filename"><?= htmlspecialchars((string) ($d['original_filename'] ?? '-')) ?></span></td>
+                        <td data-label="Validez CAE">
+                            <span class="badge <?= htmlspecialchars($badgeClass, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></span>
+                        </td>
+                        <td data-label="Motivo" class="doc-table-reason">
+                            <span class="d-block"><?= htmlspecialchars($reasonPrimary, ENT_QUOTES, 'UTF-8') ?></span>
+                            <?php if ($reasonSecondary !== ''): ?>
+                                <span class="small text-muted d-block mt-1"><?= htmlspecialchars($reasonSecondary, ENT_QUOTES, 'UTF-8') ?></span>
+                            <?php endif; ?>
+                        </td>
                         <td data-label="Acciones" class="text-end">
                             <div class="table-actions">
                                 <?php if (!empty($d['storage_path'])): ?>
@@ -338,8 +335,120 @@ $statusBadge = static function (string $status): string {
                         </td>
                     </tr>
                 <?php endforeach; ?>
-                </tbody>
-            </table>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 </div>
+
+<!-- Confirmación: subir y sustituir documento complementario -->
+<div class="modal fade" id="modalTechUploadReplace" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle text-warning me-2"></i>Sustituir documento
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-2" id="tech-upload-replace-intro"></p>
+                <p class="small text-muted mb-0">El archivo anterior dejará de ser el vigente en el CAE actual.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-warning" id="tech-upload-replace-confirm">
+                    <i class="bi bi-upload me-1"></i>Subir y sustituir
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('form-tech-upload-supporting');
+    const typeSelect = document.getElementById('tech-upload-doc-type');
+    const modalEl = document.getElementById('modalTechUploadReplace');
+    if (!form) return;
+
+    const modal = modalEl ? bootstrap.Modal.getOrCreateInstance(modalEl) : null;
+    const introEl = document.getElementById('tech-upload-replace-intro');
+    const confirmBtn = document.getElementById('tech-upload-replace-confirm');
+
+    const clearModalBackdrop = () => {
+        document.querySelectorAll('.modal-backdrop').forEach((el) => el.remove());
+        document.body.classList.remove('modal-open');
+        document.body.style.removeProperty('overflow');
+        document.body.style.removeProperty('padding-right');
+    };
+
+    const lockAdminUploadForm = () => {
+        form.dataset.submitting = '1';
+        setTimeout(function () {
+            form.querySelectorAll('button[type="submit"], select, input[type="file"]').forEach(function (el) {
+                el.disabled = true;
+            });
+        }, 0);
+    };
+
+    const showAnalyzeOverlay = () => {
+        requestAnimationFrame(() => {
+            clearModalBackdrop();
+            window.AppDocAnalyzeOverlay?.show({
+                title: 'Analizando documento complementario'
+            });
+            lockAdminUploadForm();
+        });
+    };
+
+    form.addEventListener('submit', function (e) {
+
+        if (form.dataset.submitting === '1') {
+            e.preventDefault();
+            return;
+        }
+
+        if (form.dataset.confirmed === '1') {
+            delete form.dataset.confirmed;
+            showAnalyzeOverlay();
+            return;
+        }
+
+        if (!typeSelect) {
+            showAnalyzeOverlay();
+            return;
+        }
+
+        const opt = typeSelect.options[typeSelect.selectedIndex];
+        const prev = (opt?.getAttribute('data-active-filename') || '').trim();
+        if (prev === '') {
+            showAnalyzeOverlay();
+            return;
+        }
+
+        e.preventDefault();
+        const typeName = (opt.textContent || '').trim();
+        if (introEl) {
+            introEl.textContent =
+                'Vas a subir un nuevo «' + typeName + '». Sustituirá el archivo vigente «' + prev + '».';
+        }
+
+        const onConfirm = () => {
+            confirmBtn?.removeEventListener('click', onConfirm);
+            const submitAfterHide = () => {
+                modalEl?.removeEventListener('hidden.bs.modal', submitAfterHide);
+                form.dataset.confirmed = '1';
+                form.requestSubmit();
+            };
+            modalEl?.addEventListener('hidden.bs.modal', submitAfterHide, { once: true });
+            modal?.hide();
+        };
+
+        confirmBtn?.addEventListener('click', onConfirm, { once: true });
+        modal?.show();
+    });
+});
+</script>

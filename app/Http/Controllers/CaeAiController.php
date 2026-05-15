@@ -8,6 +8,7 @@ use App\Core\Controller;
 use App\Core\Database;
 use App\Services\CaeAiService;
 use App\Services\CaePdfService;
+use App\Services\CaeReadinessService;
 use Smalot\PdfParser\Parser;
 use PDO;
 
@@ -20,45 +21,14 @@ final class CaeAiController extends Controller
         $this->requireAdmin();
 
         $tid = (int) ($params['id'] ?? 0);
-        $pdo = Database::connection();
-
-        $tech = $this->loadTech($pdo, $tid);
-        if (!$tech) {
+        if ($tid <= 0) {
             http_response_code(404);
-            $this->respond('Técnico no encontrado');
+            $this->respond('Técnico no válido');
             return;
         }
 
-        $stmt = $pdo->prepare("
-            SELECT cd.id, cd.original_filename, cd.mime_type, cd.storage_path, cd.uploaded_at
-            FROM cae_documents cd
-            JOIN cae_records cr ON cr.id = cd.cae_record_id
-            WHERE cr.technician_id = :tid
-              AND cd.is_active = TRUE
-            ORDER BY cd.uploaded_at DESC
-            LIMIT 100
-        ");
-        $stmt->execute(['tid' => $tid]);
-        $existingDocs = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        $stmt = $pdo->prepare("
-            SELECT id, status, generated_at, pdf_storage_path
-            FROM cae_ai_generations
-            WHERE technician_id = :tid
-            ORDER BY created_at DESC
-            LIMIT 10
-        ");
-        $stmt->execute(['tid' => $tid]);
-        $generations = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        $this->render('cae.ai_builder', [
-            'title' => 'Generación CAE con IA',
-            'areaBaseUrl' => $this->areaBaseUrl(),
-            'baseUrl' => $this->baseUrl(),
-            'tech' => $tech,
-            'existingDocs' => $existingDocs,
-            'generations' => $generations,
-        ]);
+        header('Location: ' . $this->areaBaseUrl() . '/tecnicos/' . $tid . '/cae#cae-manage', true, 302);
+        exit;
     }
 
     /** @param array<string,string> $params */
@@ -75,86 +45,78 @@ final class CaeAiController extends Controller
         $tech = $this->loadTech($pdo, $tid);
         if (!$tech) {
             ob_end_clean();
-            header('Content-Type: application/json');
-            echo json_encode(['ok' => false, 'error' => 'Técnico no encontrado.']);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => false, 'error' => 'Técnico no encontrado.'], JSON_UNESCAPED_UNICODE);
             exit;
         }
 
-        $selected   = array_map('intval', (array) ($_POST['existing_doc_ids'] ?? []));
-        $extraNotes = trim((string) ($_POST['extra_notes'] ?? ''));
-
-        if ($selected === [] && empty($_FILES['new_docs']['name'][0])) {
+        $readiness = (new CaeReadinessService())->evaluateForTechnician($pdo, $tid);
+        if (!$readiness['ok']) {
             ob_end_clean();
-            header('Content-Type: application/json');
-            echo json_encode(['ok' => false, 'error' => 'Selecciona al menos un documento existente o adjunta uno nuevo.']);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'ok'      => false,
+                'error'   => implode(' ', $readiness['reasons']),
+                'reasons' => $readiness['reasons'],
+                'by_type' => $readiness['by_type'],
+            ], JSON_UNESCAPED_UNICODE);
             exit;
         }
 
         // Cargar fechas del CAE vigente para pasarlas a la IA como datos fijos
         $stmt = $pdo->prepare("
-            SELECT valid_from::text AS valid_from, valid_until::text AS valid_until
+            SELECT id, valid_from::text AS valid_from, valid_until::text AS valid_until
             FROM cae_records
             WHERE technician_id = :tid AND is_current = TRUE
             LIMIT 1
         ");
         $stmt->execute(['tid' => $tid]);
         $currentCaeRow = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $caeRecordId = (int) ($currentCaeRow['id'] ?? 0);
         $tech['valid_from']  = (string) ($currentCaeRow['valid_from']  ?? '');
         $tech['valid_until'] = (string) ($currentCaeRow['valid_until'] ?? '');
 
+        if ($caeRecordId <= 0) {
+            ob_end_clean();
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => false, 'error' => 'No hay CAE vigente para este técnico.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        // Complementarios activos del mismo cae_record (un slot por tipo, paso 3)
+        $stmt = $pdo->prepare('
+            SELECT DISTINCT ON (cd.document_type_id)
+                cd.id,
+                cd.original_filename,
+                cd.storage_path,
+                cd.mime_type,
+                dt.name AS document_type_name
+            FROM cae_documents cd
+            INNER JOIN document_types dt ON dt.id = cd.document_type_id
+            WHERE cd.cae_record_id = :crid
+                AND cd.is_active = TRUE
+                AND cd.is_cae_file = FALSE
+            ORDER BY cd.document_type_id, cd.uploaded_at DESC NULLS LAST, cd.id DESC
+        ');
+        $stmt->execute(['crid' => $caeRecordId]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
         $sources = [];
-
-        // Fuentes existentes
-        if ($selected !== []) {
-            $in = implode(',', array_fill(0, count($selected), '?'));
-            $stmt = $pdo->prepare("
-                SELECT cd.id, cd.original_filename, cd.storage_path, cd.mime_type
-                FROM cae_documents cd
-                JOIN cae_records cr ON cr.id = cd.cae_record_id
-                WHERE cr.technician_id = ?
-                  AND cd.is_active = TRUE
-                  AND cd.id IN ($in)
-            ");
-            $i = 1;
-            $stmt->bindValue($i++, $tid, PDO::PARAM_INT);
-            foreach ($selected as $id) $stmt->bindValue($i++, $id, PDO::PARAM_INT);
-            $stmt->execute();
-
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-                $abs = dirname(__DIR__, 3) . '/public' . (string) $row['storage_path'];
-                $row['source_type'] = 'existing';
-                $row['extracted_text'] = $this->extractText($abs, (string) $row['mime_type']);
-                $sources[] = $row;
-            }
+        foreach ($rows as $row) {
+            $abs = dirname(__DIR__, 3) . '/public' . (string) $row['storage_path'];
+            $row['source_type'] = 'existing';
+            $row['extracted_text'] = $this->extractText($abs, (string) $row['mime_type']);
+            $sources[] = $row;
         }
 
-        // Nuevos uploads
-        if (!empty($_FILES['new_docs']['name'][0])) {
-            $dir = dirname(__DIR__, 3) . '/public/uploads/cae-ai-temp/' . $tid;
-            if (!is_dir($dir)) mkdir($dir, 0775, true);
-
-            $names = (array) $_FILES['new_docs']['name'];
-            $tmp   = (array) $_FILES['new_docs']['tmp_name'];
-            $errs  = (array) $_FILES['new_docs']['error'];
-            $types = (array) $_FILES['new_docs']['type'];
-
-            foreach ($names as $k => $name) {
-                if (($errs[$k] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) continue;
-                $safe = preg_replace('/[^A-Za-z0-9._-]/', '_', (string) $name) ?: 'doc.bin';
-                $final = uniqid('ai_', true) . '_' . $safe;
-                $abs = $dir . '/' . $final;
-                move_uploaded_file((string) $tmp[$k], $abs);
-
-                $sources[] = [
-                    'id' => null,
-                    'original_filename' => (string) $name,
-                    'storage_path' => '/uploads/cae-ai-temp/' . $tid . '/' . $final,
-                    'mime_type' => (string) ($types[$k] ?? 'application/octet-stream'),
-                    'source_type' => 'upload',
-                    'extracted_text' => $this->extractText($abs, (string) ($types[$k] ?? '')),
-                ];
-            }
+        if ($sources === []) {
+            ob_end_clean();
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => false, 'error' => 'No hay documentos complementarios en el CAE vigente para alimentar la IA.'], JSON_UNESCAPED_UNICODE);
+            exit;
         }
+
+        $extraNotes = trim((string) ($_POST['extra_notes'] ?? ''));
 
         // 1. PHP determina el estado — lógica determinista, sin IA
         $statusResult = CaeAiService::determineStatus($sources);
@@ -168,19 +130,18 @@ final class CaeAiController extends Controller
         if ($overrideFrom !== '')  $draft['campos']['valido_desde'] = $overrideFrom;
         if ($overrideUntil !== '') $draft['campos']['valido_hasta'] = $overrideUntil;
 
-        // El estado ya viene determinado por PHP, no por la IA
         $caeStatus = (string) ($draft['conclusion_estado'] ?? 'in_review');
 
-        // ── Renderizar PDF con el draft ya corregido ──
         $pdfDir = dirname(__DIR__, 3) . '/public/uploads/cae-generated/' . $tid;
-        if (!is_dir($pdfDir)) mkdir($pdfDir, 0775, true);
+        if (!is_dir($pdfDir)) {
+            mkdir($pdfDir, 0775, true);
+        }
         $pdfName = 'cae_ai_' . date('Ymd_His') . '_' . uniqid() . '.pdf';
         $pdfAbs  = $pdfDir . '/' . $pdfName;
         $pdfRel  = '/uploads/cae-generated/' . $tid . '/' . $pdfName;
 
         CaePdfService::render($pdfAbs, $tech, $draft);
 
-        // ── Persistencia ──
         $stmt = $pdo->prepare("
             INSERT INTO cae_ai_generations
             (technician_id, cae_record_id, requested_by_user_id, model_name, status, input_json, output_json, pdf_storage_path, generated_at, created_at, updated_at)
@@ -191,7 +152,7 @@ final class CaeAiController extends Controller
         $stmt->execute([
             'tid' => $tid,
             'uid' => (int) ($_SESSION['user']['id'] ?? 0),
-            'in'  => json_encode(['extra_notes' => $extraNotes], JSON_UNESCAPED_UNICODE),
+            'in'  => json_encode(['mode' => 'auto_supporting_docs', 'cae_record_id' => $caeRecordId, 'extra_notes' => $extraNotes], JSON_UNESCAPED_UNICODE),
             'out' => json_encode($draft, JSON_UNESCAPED_UNICODE),
             'pdf' => $pdfRel,
         ]);
@@ -206,7 +167,7 @@ final class CaeAiController extends Controller
         foreach ($sources as $s) {
             $stmtS->execute([
                 'gid'   => $genId,
-                'type'  => (string) ($s['source_type'] ?? 'upload'),
+                'type'  => (string) ($s['source_type'] ?? 'existing'),
                 'docid' => isset($s['id']) ? (int) $s['id'] : null,
                 'name'  => (string) ($s['original_filename'] ?? 'documento'),
                 'path'  => (string) ($s['storage_path'] ?? ''),
@@ -216,7 +177,7 @@ final class CaeAiController extends Controller
         }
 
         ob_end_clean();
-        header('Content-Type: application/json');
+        header('Content-Type: application/json; charset=utf-8');
         echo json_encode([
             'ok'            => true,
             'pdf_url'       => $this->baseUrl() . $pdfRel,
@@ -355,7 +316,7 @@ final class CaeAiController extends Controller
         [$flashMsg, $flashType] = match ($caeStatus) {
             'approved'     => ['CAE generado con IA y aprobado correctamente.', 'success'],
             'in_review'    => ['CAE guardado. Estado: En revisión — requiere validación.', 'warning'],
-            'pending_docs' => ['CAE guardado. Faltan documentos obligatorios (Póliza RC / Recibo RC).', 'warning'],
+            'pending_docs' => ['CAE guardado. Faltan o no cumplen la documentación complementaria obligatoria (Hacienda, Seguridad Social, Póliza de Responsabilidad Civil, Prevención de riesgos laborales).', 'warning'],
             default        => ['CAE guardado como Rechazado según el análisis de la IA.', 'danger'],
         };
         $this->flash($flashMsg, $flashType, $caeStatus === 'approved' ? 'Correcto' : 'Atención');

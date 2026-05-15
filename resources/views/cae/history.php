@@ -6,8 +6,9 @@ $current  = $currentCae ?? null;
 $isValid  = (bool) ($isCurrentValid ?? false);
 $doc      = $currentCaeDoc ?? null;
 $requestableDocTypes = $requestableDocTypes ?? [];
-$caeDocRequests      = $caeDocRequests ?? [];
 $existingCaeDocs     = $existingCaeDocs ?? [];
+$activeSupportingFilenameByDocTypeId = $activeSupportingFilenameByDocTypeId ?? [];
+$aeatCotejoUseMock = !empty($aeatCotejoUseMock);
 
 $techId   = (int) ($t['id'] ?? 0);
 $techName = trim(((string) ($t['first_name'] ?? '')) . ' ' . ((string) ($t['last_name'] ?? '')));
@@ -143,34 +144,70 @@ $statusBadge = static function (string $status): string {
                         <span>Generar CAE con IA</span>
                     </div>
                     <div class="subpanel-b">
-                        <form id="cae-ai-form" enctype="multipart/form-data">
+                        <form id="cae-ai-form" method="post" action="<?= htmlspecialchars($ab) ?>/tecnicos/<?= $techId ?>/cae/ia/generate">
                             <input type="hidden" name="technician_id" value="<?= $techId ?>">
 
                             <div class="row g-3 align-items-start">
 
-                                <!-- Columna izquierda: documentos -->
                                 <div class="col-md-7">
-                                    <label class="form-label fw-semibold mb-2">Documentos existentes</label>
+                                    <label class="form-label fw-semibold mb-2">Documentación que usará la IA</label>
+                                    <p class="small text-muted mb-3">
+                                    Se cargan automáticamente los <strong>cuatro complementarios activos</strong> del CAE vigente.
+                                    Solo podrás generar si todos están <strong>válidos para CAE</strong> (vigencia y, en Hacienda, verificación con la Agencia Tributaria).
+                                    </p>
                                     <?php if (empty($existingCaeDocs)): ?>
-                                        <p class="small text-muted">No hay documentos subidos todavía.</p>
+                                        <p class="small text-muted">No hay complementarios en este CAE vigente.</p>
                                     <?php else: ?>
-                                        <div class="doc-chips-wrap mb-3">
+                                        <div id="cae-ai-doc-list" class="doc-chips-wrap mb-3 flex-column align-items-stretch gap-2">
                                             <?php foreach ($existingCaeDocs as $d): ?>
-                                                <label class="doc-chip">
-                                                    <input type="checkbox" name="existing_doc_ids[]" value="<?= (int) $d['id'] ?>">
-                                                    <span title="<?= htmlspecialchars((string) $d['original_filename']) ?>">
-                                                        <i class="bi bi-file-earmark me-1"></i><?= htmlspecialchars((string) $d['original_filename']) ?>
-                                                    </span>
-                                                </label>
+                                                <?php
+                                                    $csv = isset($d['extracted_aeat_csv']) ? trim((string) $d['extracted_aeat_csv']) : '';
+                                                    $aeCod = isset($d['aeat_cotejo_codigo']) && $d['aeat_cotejo_codigo'] !== null && $d['aeat_cotejo_codigo'] !== ''
+                                                        ? (string) $d['aeat_cotejo_codigo'] : '';
+                                                    $aeHu = isset($d['aeat_cotejo_huella_ok']) ? $d['aeat_cotejo_huella_ok'] : null;
+                                                    $aeMock = !empty($d['aeat_cotejo_used_mock']);
+                                                    $aeAt = isset($d['aeat_cotejo_checked_at']) ? trim((string) $d['aeat_cotejo_checked_at']) : '';
+                                                    $aeDesc = isset($d['aeat_cotejo_descripcion']) ? trim((string) $d['aeat_cotejo_descripcion']) : '';
+                                                ?>
+                                                <div class="border rounded px-3 py-2 small d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                                                    <div class="min-w-0">
+                                                        <div class="fw-semibold text-truncate" title="<?= htmlspecialchars((string) ($d['original_filename'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                                                            <i class="bi bi-file-earmark me-1"></i><?= htmlspecialchars((string) ($d['original_filename'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                                                        </div>
+                                                        <div class="doc-chip-meta d-flex flex-wrap align-items-center gap-1 mt-1">
+                                                            <?php if ($csv !== ''): ?>
+                                                                <span class="badge rounded-pill text-bg-secondary">CSV</span>
+                                                            <?php endif; ?>
+                                                            <?php if ($aeCod !== ''): ?>
+                                                                <span class="badge rounded-pill <?= $aeHu ? 'text-bg-success' : 'text-bg-warning text-dark' ?>" title="<?= htmlspecialchars($aeDesc, ENT_QUOTES, 'UTF-8') ?>">Hacienda <?= htmlspecialchars($aeCod, ENT_QUOTES, 'UTF-8') ?></span>
+                                                            <?php elseif ($aeAt !== '' && $aeDesc !== ''): ?>
+                                                                <span class="badge rounded-pill text-bg-light text-dark border" title="<?= htmlspecialchars($aeDesc, ENT_QUOTES, 'UTF-8') ?>">Hacienda</span>
+                                                            <?php endif; ?>
+                                                            <?php if ($aeatCotejoUseMock && $aeMock && ($aeAt !== '' || $aeCod !== '')): ?>
+                                                                <span class="badge rounded-pill text-bg-light text-dark border" title="Entorno de prueba">Prueba</span>
+                                                            <?php endif; ?>
+                                                            <?php
+                                                                $cv = $d['cae_validity'] ?? null;
+                                                                if (is_array($cv) && isset($cv['label'])):
+                                                                    $cvOk = !empty($cv['valid_for_cae']);
+                                                                    $cvCls = $cvOk ? 'text-bg-success' : 'text-bg-danger';
+                                                            ?>
+                                                                <span class="badge rounded-pill <?= $cvCls ?>" title="<?= htmlspecialchars((string) ($cv['summary'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars((string) $cv['label'], ENT_QUOTES, 'UTF-8') ?></span>
+                                                            <?php endif; ?>
+                                                            <?php
+                                                                if (is_array($cv) && empty($cv['valid_for_cae'])):
+                                                                    $chipReason = \App\Services\DocumentIntakePresentationService::validityPrimaryReason($cv);
+                                                            ?>
+                                                                <span class="doc-chip-reason small text-muted w-100 mt-1"><?= htmlspecialchars($chipReason, ENT_QUOTES, 'UTF-8') ?></span>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             <?php endforeach; ?>
                                         </div>
                                     <?php endif; ?>
-
-                                    <label class="form-label fw-semibold">Adjuntar nuevos documentos <span class="text-muted fw-normal">(opcional)</span></label>
-                                    <input type="file" name="new_docs[]" class="form-control" multiple>
                                 </div>
 
-                                <!-- Columna derecha: fechas + botón -->
                                 <div class="col-md-5">
                                     <label class="form-label fw-semibold">Fechas de validez del CAE</label>
                                     <div class="row g-2 mb-3">
@@ -188,7 +225,7 @@ $statusBadge = static function (string $status): string {
 
                                     <div id="ai-form-error" class="alert alert-warning small py-2 d-none">
                                         <i class="bi bi-exclamation-triangle me-1"></i>
-                                        <span id="ai-form-error-msg"></span>
+                                        <span id="ai-form-error-msg" style="white-space: pre-line; word-break: break-word;"></span>
                                     </div>
 
                                     <button type="submit" class="btn btn-primary w-100" id="ai-generate-btn">
@@ -236,17 +273,29 @@ $statusBadge = static function (string $status): string {
                 <p class="text-muted small mb-3">
                     Se enviará un email a <strong><?= htmlspecialchars((string) ($t['email'] ?? 'sin email')) ?></strong> con la solicitud de los documentos seleccionados.
                 </p>
-                <form method="post" action="<?= htmlspecialchars($ab) ?>/tecnicos/<?= $techId ?>/cae/request-docs">
+                <form id="form-cae-request-docs" method="post" action="<?= htmlspecialchars($ab) ?>/tecnicos/<?= $techId ?>/cae/request-docs">
                     <label class="form-label fw-semibold">Documentos solicitados <span class="text-danger">*</span></label>
                     <?php if (empty($requestableDocTypes)): ?>
                         <div class="alert alert-warning py-2 mb-3">No hay tipos de documento configurados para <code>technician_cae</code>.</div>
                     <?php else: ?>
-                        <div class="doc-chips-wrap mb-3">
+                        <div id="cae-request-doc-types" class="doc-chips-wrap mb-3">
                             <?php foreach ($requestableDocTypes as $dt): ?>
+                                <?php
+                                    $dtypeId = (int) ($dt['id'] ?? 0);
+                                    $prevFilename = isset($activeSupportingFilenameByDocTypeId[$dtypeId])
+                                        ? trim((string) $activeSupportingFilenameByDocTypeId[$dtypeId])
+                                        : '';
+                                ?>
                                 <label class="doc-chip">
-                                    <input type="checkbox" name="document_type_ids[]" value="<?= (int) $dt['id'] ?>">
+                                    <input type="checkbox"
+                                           name="document_type_ids[]"
+                                           value="<?= $dtypeId ?>"
+                                           data-replaces-filename="<?= htmlspecialchars($prevFilename, ENT_QUOTES, 'UTF-8') ?>">
                                     <span title="<?= htmlspecialchars((string) $dt['name']) ?>">
                                         <i class="bi bi-file-earmark me-1"></i><?= htmlspecialchars((string) $dt['name']) ?>
+                                        <?php if ($prevFilename !== ''): ?>
+                                            <span class="text-warning small"> · ya hay archivo</span>
+                                        <?php endif; ?>
                                     </span>
                                 </label>
                             <?php endforeach; ?>
@@ -261,47 +310,12 @@ $statusBadge = static function (string $status): string {
                 </form>
             </div>
         </div>
-
-        <!-- Historial -->
-        <div class="subpanel">
-            <div class="subpanel-h d-flex justify-content-between align-items-center">
-                <span>Historial de solicitudes</span>
-                <span class="badge text-bg-light text-dark"><?= count($caeDocRequests) ?></span>
-            </div>
-            <div class="subpanel-b p-0">
-                <?php if (empty($caeDocRequests)): ?>
-                    <p class="text-muted small mb-0 p-3">Aún no se han enviado solicitudes.</p>
-                <?php else: ?>
-                    <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-0">
-                            <thead><tr><th>Fecha</th><th>Documentos solicitados</th><th>Estado</th><th>Solicitado por</th></tr></thead>
-                            <tbody>
-                            <?php foreach ($caeDocRequests as $r): ?>
-                                <?php
-                                    $docs   = json_decode((string) ($r['documents_requested_json'] ?? '[]'), true) ?: [];
-                                    $status = (string) ($r['status'] ?? '');
-                                    $badge  = match ($status) { 'sent' => 'text-bg-success', 'failed' => 'text-bg-warning', 'completed' => 'text-bg-primary', 'cancelled' => 'text-bg-secondary', default => 'text-bg-light text-dark' };
-                                    $slabel = match ($status) { 'sent' => 'Enviada', 'failed' => 'Error envío', 'completed' => 'Completada', 'cancelled' => 'Cancelada', default => ucfirst($status) };
-                                ?>
-                                <tr>
-                                    <td><?= htmlspecialchars((string) ($r['sent_at'] ?? '-')) ?></td>
-                                    <td><?php foreach ($docs as $d): ?><span class="badge text-bg-light border me-1 mb-1"><?= htmlspecialchars((string) ($d['name'] ?? '-')) ?></span><?php endforeach; ?></td>
-                                    <td><span class="badge <?= $badge ?>"><?= $slabel ?></span></td>
-                                    <td><?= htmlspecialchars((string) ($r['requested_by_name'] ?? '-')) ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </div>
     </div>
 </div>
 
 <!-- Modal: Ajustes manuales del CAE -->
 <div class="modal fade" id="manualCaeModal" tabindex="-1" aria-labelledby="manualCaeModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="manualCaeModalLabel">
@@ -353,7 +367,7 @@ $statusBadge = static function (string $status): string {
 
 <!-- Modal: Preview PDF generado por IA -->
 <div class="modal fade" id="aiPreviewModal" tabindex="-1" aria-labelledby="aiPreviewModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="aiPreviewModalLabel"><i class="bi bi-file-earmark-pdf me-2"></i>Vista previa — CAE generado</h5>
@@ -378,7 +392,7 @@ $statusBadge = static function (string $status): string {
 
 <!-- Modal: Conflicto CAE vigente -->
 <div class="modal fade" id="aiConflictModal" tabindex="-1" aria-labelledby="aiConflictLabel" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="aiConflictLabel"><i class="bi bi-exclamation-triangle me-2 text-warning"></i>Ya existe un CAE vigente</h5>
@@ -405,6 +419,32 @@ $statusBadge = static function (string $status): string {
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
                 <button type="button" class="btn btn-primary" id="ai-conflict-confirm">
                     <i class="bi bi-check2 me-1"></i> Confirmar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Confirmación solicitud documentos -->
+<div class="modal fade" id="modalCaeRequestDocsConfirm" tabindex="-1" aria-labelledby="modalCaeRequestDocsConfirmLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalCaeRequestDocsConfirmLabel">
+                    <i class="bi bi-exclamation-triangle text-warning me-2"></i>Confirmar solicitud
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-2">Se enviará un email al técnico con los documentos que confirmes abajo.</p>
+                <div id="cae-request-docs-confirm-conflicts"></div>
+                <div id="cae-request-docs-confirm-plain" class="d-none"></div>
+                <div id="cae-request-docs-confirm-error" class="alert alert-danger py-2 small d-none mb-0 mt-2" role="alert"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="cae-request-docs-confirm-btn">
+                    <i class="bi bi-send me-1"></i>Enviar solicitud
                 </button>
             </div>
         </div>
@@ -464,9 +504,9 @@ document.addEventListener('DOMContentLoaded', function () {
     };
 
     const statusMeta = {
-        approved:     { cls: 'text-bg-success',   label: 'Aprobado',         hint: 'La IA determinó que la documentación está completa y válida.' },
+        approved:     { cls: 'text-bg-success',   label: 'Aprobado',         hint: 'Documentación conforme a las reglas del sistema (listo para CAE con IA según expediente actual).' },
         in_review:    { cls: 'text-bg-warning',   label: 'En revisión',      hint: 'La IA recomienda revisión manual antes de aprobar.' },
-        pending_docs: { cls: 'text-bg-warning text-dark', label: 'Pendiente docs.',  hint: 'Faltan documentos obligatorios: Póliza RC y/o Recibo RC.' },
+        pending_docs: { cls: 'text-bg-warning text-dark', label: 'Pendiente docs.',  hint: 'Faltan o no cumplen requisitos los cuatro complementarios obligatorios (según política vigente).' },
         rejected:     { cls: 'text-bg-danger',    label: 'Rechazado',        hint: 'Documentos inválidos, caducados o ilegibles según la IA.' },
     };
 
@@ -491,23 +531,38 @@ document.addEventListener('DOMContentLoaded', function () {
             overlay.style.display = 'flex';
             startStepAnimation();
 
-            const fd = new FormData(aiForm);
+            const fd = new FormData();
             const aiFrom  = document.getElementById('ai-valid-from');
             const aiUntil = document.getElementById('ai-valid-until');
             if (aiFrom?.value)  fd.set('valid_from',  aiFrom.value);
             if (aiUntil?.value) fd.set('valid_until', aiUntil.value);
+            const extras = aiForm.querySelector('[name="extra_notes"]');
+            if (extras) fd.set('extra_notes', extras.value || '');
 
             try {
                 const res = await fetch(`${baseUrl}/admin/tecnicos/${techId}/cae/ia/generate`, {
                     method: 'POST',
                     body: fd,
                 });
-                const data = await res.json();
+                let data;
+                try {
+                    data = await res.json();
+                } catch (parseErr) {
+                    stopStepAnimation();
+                    overlay.style.display = 'none';
+                    showAiError('La respuesta del servidor no es válida (¿error 500 o sesión caducada?). Revisa la consola del navegador.');
+                    console.error('[CAE AI] generate JSON:', parseErr);
+                    return;
+                }
                 stopStepAnimation();
                 overlay.style.display = 'none';
 
                 if (!data.ok) {
-                    showAiError(data.error || 'Error desconocido al generar el CAE.');
+                    let msg = data.error || 'Error desconocido al generar el CAE.';
+                    if (Array.isArray(data.reasons) && data.reasons.length) {
+                        msg = data.reasons.join('\n');
+                    }
+                    showAiError(msg);
                     return;
                 }
 
@@ -579,6 +634,8 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    
+
     /* ── 3. Persistencia de pestaña por hash ── */
     const hashMap = { '#cae-manage': 'tab-cae-manage', '#cae-requests': 'tab-cae-requests' };
     const activateTabFromHash = () => {
@@ -592,6 +649,118 @@ document.addEventListener('DOMContentLoaded', function () {
             if (id === 'tab-cae-manage') window.history.replaceState(null, '', '#cae-manage');
             if (id === 'tab-cae-requests') window.history.replaceState(null, '', '#cae-requests');
         });
+    });
+
+    const requestDocsForm = document.getElementById('form-cae-request-docs');
+    const requestDocsModalEl = document.getElementById('modalCaeRequestDocsConfirm');
+    const requestDocsModal = requestDocsModalEl ? bootstrap.Modal.getOrCreateInstance(requestDocsModalEl) : null;
+    const requestConflictsEl = document.getElementById('cae-request-docs-confirm-conflicts');
+    const requestPlainEl = document.getElementById('cae-request-docs-confirm-plain');
+    const requestErrorEl = document.getElementById('cae-request-docs-confirm-error');
+    const requestDocsConfirmBtn = document.getElementById('cae-request-docs-confirm-btn');
+
+    const escapeHtml = (s) => String(s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    const chipLabel = (cb) => {
+        const span = cb.closest('.doc-chip')?.querySelector('span');
+        if (!span) return 'Tipo #' + cb.value;
+        const clone = span.cloneNode(true);
+        clone.querySelectorAll('.text-warning').forEach((n) => n.remove());
+        return (clone.textContent || '').replace(/\s+/g, ' ').trim() || ('Tipo #' + cb.value);
+    };
+
+    requestDocsForm?.addEventListener('submit', function (e) {
+        if (this.dataset.confirmed === '1') {
+            delete this.dataset.confirmed;
+            return;
+        }
+
+        const boxes = [...this.querySelectorAll('input[name="document_type_ids[]"]:checked')];
+        if (boxes.length === 0) return;
+        e.preventDefault();
+
+        requestErrorEl?.classList.add('d-none');
+        if (requestErrorEl) requestErrorEl.textContent = '';
+
+        const conflicts = [];
+        const plain = [];
+
+        boxes.forEach((cb) => {
+            const prev = (cb.getAttribute('data-replaces-filename') || '').trim();
+            const label = chipLabel(cb);
+            if (prev !== '') {
+                conflicts.push({ cb, label, prev });
+            } else {
+                plain.push(label);
+            }
+        });
+
+        if (requestConflictsEl) {
+            requestConflictsEl.innerHTML = '';
+            if (conflicts.length > 0) {
+                const intro = document.createElement('p');
+                intro.className = 'alert alert-warning py-2 small mb-3';
+                intro.innerHTML = '<strong>Ya hay archivo vigente</strong> en el CAE actual. Si el técnico sube otro desde el portal, se sustituirá. Indica si cada tipo entra en <em>esta</em> solicitud:';
+                requestConflictsEl.appendChild(intro);
+
+                conflicts.forEach((c, idx) => {
+                    const block = document.createElement('div');
+                    block.className = 'cae-request-conflict-block';
+                    block.dataset.reqIdx = String(idx);
+                    block.innerHTML =
+                        '<div class="fw-semibold mb-1">' + escapeHtml(c.label) + '</div>' +
+                        '<div class="small text-muted mb-2">Archivo actual: «' + escapeHtml(c.prev) + '»</div>' +
+                        '<div class="form-check">' +
+                        '<input class="form-check-input" type="radio" name="req_conflict_' + idx + '" id="req_inc_' + idx + '" value="include" checked>' +
+                        '<label class="form-check-label" for="req_inc_' + idx + '">Incluir en esta solicitud</label>' +
+                        '</div>' +
+                        '<div class="form-check mb-0">' +
+                        '<input class="form-check-input" type="radio" name="req_conflict_' + idx + '" id="req_exc_' + idx + '" value="exclude">' +
+                        '<label class="form-check-label" for="req_exc_' + idx + '">No incluir en esta solicitud</label>' +
+                        '</div>';
+                    requestConflictsEl.appendChild(block);
+                });
+            }
+        }
+
+        if (requestPlainEl) {
+            if (plain.length > 0) {
+                requestPlainEl.classList.remove('d-none');
+                requestPlainEl.innerHTML =
+                    '<p class="small text-muted mb-0"><strong>Sin archivo previo:</strong> ' +
+                    plain.map((l) => escapeHtml(l)).join(' · ') + '</p>';
+            } else {
+                requestPlainEl.classList.add('d-none');
+                requestPlainEl.innerHTML = '';
+            }
+        }
+
+        const onConfirm = () => {
+            requestDocsConfirmBtn?.removeEventListener('click', onConfirm);
+
+            conflicts.forEach((c, idx) => {
+                if (document.getElementById('req_exc_' + idx)?.checked) {
+                    c.cb.checked = false;
+                }
+            });
+
+            const stillChecked = requestDocsForm.querySelectorAll('input[name="document_type_ids[]"]:checked');
+            if (stillChecked.length === 0) {
+                if (requestErrorEl) {
+                    requestErrorEl.textContent = 'Debes incluir al menos un documento en la solicitud (o cancela y cambia la selección).';
+                    requestErrorEl.classList.remove('d-none');
+                }
+                return;
+            }
+
+            requestDocsModal?.hide();
+            requestDocsForm.dataset.confirmed = '1';
+            requestDocsForm.requestSubmit();
+        };
+
+        requestDocsConfirmBtn?.addEventListener('click', onConfirm, { once: true });
+        requestDocsModal?.show();
     });
 });
 </script>

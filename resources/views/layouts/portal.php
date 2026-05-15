@@ -40,6 +40,8 @@ $assetBase = rtrim((string) ($appCfg['url'] ?? '/cae-inpro/public'), '/');
 <main class="container pb-5">
     <?= $content ?? '' ?>
 </main>
+<?php require __DIR__ . '/../partials/doc_analyze_overlay.php'; ?>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="<?= htmlspecialchars($assetBase) ?>/assets/js/doc-analyze-overlay.js"></script>
 </body>
 </html>

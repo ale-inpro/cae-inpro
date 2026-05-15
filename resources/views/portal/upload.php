@@ -30,8 +30,8 @@ $uploadUrl = rtrim($baseUrl, '/') . '/portal/' . $token . '/upload';
         <i class="bi bi-check-circle-fill text-success" style="font-size:3.5rem"></i>
         <h2 class="h4 mt-3 mb-2">¡Documentos enviados!</h2>
         <p class="text-muted">
-            Hemos recibido <strong><?= $uploaded ?> documento(s)</strong> correctamente.<br>
-            El administrador los revisará próximamente. Gracias, <strong><?= htmlspecialchars($techName) ?></strong>.
+            Hemos recibido <strong><?= $uploaded ?> documento(s)</strong>.
+            Si alguno requiere revisión, un administrador confirmará las fechas antes de darlo por válido.<br>
         </p>
     </div>
 
@@ -63,7 +63,11 @@ $uploadUrl = rtrim($baseUrl, '/') . '/portal/' . $token . '/upload';
                 </div>
             <?php endif; ?>
 
-            <form method="post" action="<?= htmlspecialchars($uploadUrl) ?>" enctype="multipart/form-data">
+            <div id="portal-upload-no-files" class="alert alert-warning py-2 small d-none mb-3" role="alert">
+                Selecciona al menos un archivo antes de enviar.
+            </div>
+
+            <form id="portal-cae-upload-form" method="post" action="<?= htmlspecialchars($uploadUrl) ?>" enctype="multipart/form-data">
                 <div class="mb-4">
                     <?php foreach ($docs as $doc): ?>
                         <?php $dtId = (int) ($doc['id'] ?? 0); ?>
@@ -83,11 +87,27 @@ $uploadUrl = rtrim($baseUrl, '/') . '/portal/' . $token . '/upload';
                 </div>
 
                 <div class="d-grid">
-                    <button type="submit" class="btn btn-success btn-lg">
+                    <button type="submit" id="portal-cae-upload-submit-btn" class="btn btn-success btn-lg">
                         <i class="bi bi-upload me-2"></i>Enviar documentos
                     </button>
                 </div>
             </form>
+
+            <script>
+            document.addEventListener('DOMContentLoaded', function () {
+                const form = document.getElementById('portal-cae-upload-form');
+                if (!form || !window.AppDocAnalyzeOverlay) return;
+
+                window.AppDocAnalyzeOverlay.bindForm(form, {
+                    title: 'Analizando documentos enviados',
+                    requireFiles: true,
+                    noFilesMessageId: 'portal-upload-no-files',
+                    lockSelects: true,
+                    submitButtonLoadingHtml:
+                        '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Enviando…'
+                });
+            });
+            </script>
 
             <p class="text-center text-muted small mt-4 mb-0">
                 <i class="bi bi-lock me-1"></i>

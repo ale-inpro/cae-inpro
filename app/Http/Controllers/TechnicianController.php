@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Core\Controller;
 use App\Core\Database;
+use App\Services\CaeDocumentValidityService;
 use PDO;
 
 final class TechnicianController extends Controller
@@ -244,26 +245,65 @@ final class TechnicianController extends Controller
             $hasExpiresAt = false;
         }
 
+        $hasAeatCotejo = false;
+        try {
+            $colStmt = $pdo->prepare("
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'cae_documents'
+                  AND column_name = 'aeat_cotejo_codigo'
+                LIMIT 1
+            ");
+            $colStmt->execute();
+            $hasAeatCotejo = (bool) $colStmt->fetchColumn();
+        } catch (\Throwable) {
+            $hasAeatCotejo = false;
+        }
+
         $expiresSelect = $hasExpiresAt ? 'cd.expires_at' : 'NULL::date AS expires_at';
+        $aeatSelect = $hasAeatCotejo
+            ? ', cd.aeat_cotejo_codigo, cd.aeat_cotejo_huella_ok, cd.aeat_cotejo_descripcion, cd.aeat_cotejo_checked_at, cd.aeat_cotejo_used_mock'
+            : '';
 
         $stmt = $pdo->prepare("
             SELECT
                 cd.id,
+                cd.document_type_id,
                 dt.name AS document_name,
                 cd.original_filename,
                 cd.storage_path,
                 cd.uploaded_at,
                 {$expiresSelect}
+                {$aeatSelect}
             FROM cae_documents cd
             JOIN document_types dt ON dt.id = cd.document_type_id
             JOIN cae_records cr ON cr.id = cd.cae_record_id
             WHERE cr.technician_id = :tid
-            AND cd.is_active = TRUE
-            AND cd.is_cae_file = FALSE
+              AND cr.is_current = TRUE
+              AND cd.is_active = TRUE
+              AND cd.is_cae_file = FALSE
             ORDER BY cd.uploaded_at DESC
         ");
         $stmt->execute(['tid' => $id]);
         $caeDocuments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($caeDocuments as $i => $docRow) {
+            $caeDocuments[$i]['cae_validity'] = CaeDocumentValidityService::evaluateSupportingRow(
+                $pdo,
+                $docRow,
+                $hasAeatCotejo
+            );
+        }
+
+        $activeSupportingFilenameByDocTypeId = [];
+        foreach ($caeDocuments as $docRow) {
+            $dtype = (int) ($docRow['document_type_id'] ?? 0);
+            if ($dtype > 0 && !isset($activeSupportingFilenameByDocTypeId[$dtype])) {
+                $activeSupportingFilenameByDocTypeId[$dtype] =
+                    (string) ($docRow['original_filename'] ?? '');
+            }
+        }
 
         $pendingIntakeDocs = [];
         if ($role === 'admin') {
@@ -287,6 +327,10 @@ final class TechnicianController extends Controller
             ");
             $stmt->execute(['tid' => $id]);
             $pendingIntakeDocs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($pendingIntakeDocs as $i => $row) {
+                $pendingIntakeDocs[$i]['_present'] = \App\Services\DocumentIntakePresentationService::presentPendingIntake($row);
+            }
         }
 
         $caeDocTypes = [];
@@ -325,6 +369,7 @@ final class TechnicianController extends Controller
             'caeDocuments' => $caeDocuments,
             'pendingIntakeDocs' => $pendingIntakeDocs,
             'caeDocTypes' => $caeDocTypes,
+            'activeSupportingFilenameByDocTypeId' => $activeSupportingFilenameByDocTypeId,
         ]);
     }
 

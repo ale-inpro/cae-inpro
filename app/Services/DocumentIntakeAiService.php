@@ -89,7 +89,7 @@ final class DocumentIntakeAiService
             'confidence'     => (float) ($json['confidence'] ?? 0.0),
             'issue_date'     => self::normDate($json['issue_date'] ?? null),
             'expires_at'     => self::normDate($json['expires_at'] ?? null),
-            'notes'          => '[Python] ' . (string) ($json['notes'] ?? ''),
+            'notes'          => DocumentIntakePresentationService::humanizeNotes((string) ($json['notes'] ?? '')),
             'extracted_text' => (string) ($json['extracted_text'] ?? ''),
         ];
     }
@@ -262,7 +262,7 @@ PROMPT;
             'confidence'     => (float) ($json['confidence'] ?? 0.0),
             'issue_date'     => self::normDate($json['issue_date'] ?? null),
             'expires_at'     => self::normDate($json['expires_at'] ?? null),
-            'notes'          => '[Fallback OpenAI texto] ' . (string) ($json['notes'] ?? ''),
+            'notes'          => DocumentIntakePresentationService::humanizeNotes((string) ($json['notes'] ?? '')),
             'extracted_text' => $text,
         ];
     }
@@ -279,7 +279,7 @@ PROMPT;
             'confidence'     => 0.0,
             'issue_date'     => null,
             'expires_at'     => null,
-            'notes'          => $notes,
+            'notes'          => DocumentIntakePresentationService::humanizeNotes($notes),
             'extracted_text' => $text,
         ];
     }

@@ -837,6 +837,37 @@ body{
     box-shadow: 0 16px 40px rgba(15, 23, 42, .12);
 }
 
+/* === Modales: centrado vertical y horizontal (toda la aplicación) === */
+.modal .modal-dialog {
+    margin-left: auto;
+    margin-right: auto;
+}
+
+@media (min-height: 400px) {
+    .modal .modal-dialog {
+        display: flex;
+        align-items: center;
+        min-height: calc(100% - 3.5rem);
+    }
+}
+
+.modal .modal-content {
+    width: 100%;
+}
+
+/* Modal solicitud documentos */
+#modalCaeRequestDocsConfirm .modal-header {
+    background: var(--bs-warning-bg-subtle, #fff3cd);
+    border-bottom-color: rgba(0, 0, 0, .08);
+}
+
+.cae-request-conflict-block {
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 10px;
+    padding: .75rem 1rem;
+    margin-bottom: .5rem;
+}
+
 #cae-operation-form input[type="date"] {
     min-width: 145px;
 }
@@ -1192,7 +1223,8 @@ white-space: nowrap;
 }
 
 /* ── Loading overlay IA ── */
-#ai-loading-overlay {
+#ai-loading-overlay,
+#doc-analyze-overlay {
     position: fixed;
     inset: 0;
     background: rgba(15, 23, 42, 0.75);
@@ -1201,6 +1233,11 @@ white-space: nowrap;
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 1rem;
+}
+#doc-analyze-overlay .ai-loading-card {
+    flex-shrink: 0;
+    max-width: min(420px, 92vw);
 }
 .ai-loading-card {
     background: #fff;
@@ -1294,6 +1331,21 @@ white-space: nowrap;
     border-color: var(--app-primary, #198754);
     color: #fff;
     font-weight: 600;
+}
+.doc-chip-stack {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: .25rem;
+    margin: 0 .35rem .4rem 0;
+    vertical-align: top;
+    max-width: 300px;
+}
+.doc-chip-meta {
+    font-size: .68rem;
+    line-height: 1.25;
+    color: #64748b;
+    max-width: 100%;
 }
 
 /* ===== Admin Ops Dashboard ===== */
@@ -1483,4 +1535,95 @@ white-space: nowrap;
     padding: .85rem .9rem;
     font-size: .82rem;
     color: #6b7280;
+  }
+
+
+  /* —— Documentos técnico / CAE —— */
+.doc-panel-intro {
+    font-size: 0.875rem;
+    color: var(--bs-secondary-color, #64748b);
+    line-height: 1.5;
+    max-width: 52rem;
+  }
+  
+  .doc-panel--pending {
+    border-color: #fcd34d !important;
+    background: linear-gradient(180deg, #fffbeb 0%, #fff 12%);
+  }
+  
+  .doc-table-type {
+    font-weight: 600;
+    max-width: 14rem;
+  }
+  
+  .doc-table-filename {
+    font-weight: 500;
+    word-break: break-word;
+  }
+  
+  .doc-table-reason {
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    color: #475569;
+    max-width: 22rem;
+  }
+  
+  .doc-table-meta {
+    line-height: 1.4;
+  }
+  
+  .doc-approve-date {
+    min-width: 10.5rem;
+  }
+  
+  .doc-approve-date .form-label {
+    color: #64748b;
+  }
+
+  /* Acciones revisión manual: alinear botones con el input de fecha */
+.intake-review-actions {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 0.5rem;
+  }
+  
+  .intake-review-actions__group {
+    margin: 0;
+  }
+  
+  .intake-review-actions .intake-review-actions__btn {
+    margin-bottom: 0.125rem; /* alinea visual con input sm */
+  }
+  
+  @media (max-width: 767.98px) {
+    .intake-review-actions {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .intake-review-actions__group {
+      width: 100%;
+    }
+    .intake-review-actions__group .btn {
+      width: 100%;
+    }
+  }
+  
+  .doc-chip-reason {
+    display: block;
+    line-height: 1.35;
+  }
+  
+  #cae-ai-doc-list .border.rounded {
+    border-color: #e2e8f0 !important;
+    background: #f8fafc;
+  }
+  
+  #cae-ai-doc-list .border.rounded:hover {
+    background: #f1f5f9;
+  }
+  
+  @media (min-width: 768px) {
+    .doc-table .table-actions {
+      gap: 0.35rem;
+    }
   }

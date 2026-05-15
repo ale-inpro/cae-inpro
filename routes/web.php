@@ -11,6 +11,7 @@ use App\Http\Controllers\TechnicianController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\CaeAiController;
 use App\Http\Controllers\TechnicianPortalController;
+use App\Http\Controllers\AeatCotejoTestController;
 
 return [
     'routes' => [
@@ -89,6 +90,9 @@ return [
 
         // Solicitud de informe RL por el gestor
         ['method' => 'POST', 'path' => '/gestor/comunidades/{id}/riesgos/request', 'action' => [RiskReportController::class, 'requestFromGestor']],
+        
+        // Subida de informe RL por el gestor
+        ['method' => 'POST', 'path' => '/gestor/comunidades/{id}/riesgos/upload', 'action' => [RiskReportController::class, 'uploadReport']],
 
         // Eliminar notificaciones
         ['method' => 'POST', 'path' => '/admin/notificaciones/{notifId}/delete', 'action' => [NotificationController::class, 'deleteOne']],
@@ -97,6 +101,7 @@ return [
         ['method' => 'POST', 'path' => '/gestor/notificaciones/delete-all',      'action' => [NotificationController::class, 'deleteAll']],
 
         ['method' => 'POST', 'path' => '/admin/tecnicos/{id}/cae/ia/generate', 'action' => [CaeAiController::class, 'generate']],
+        ['method' => 'GET',  'path' => '/admin/tecnicos/{id}/cae/ia/builder', 'action' => [CaeAiController::class, 'builder']],
         ['method' => 'POST', 'path' => '/admin/tecnicos/{id}/cae/ia/save',     'action' => [CaeAiController::class, 'save']],
         ['method' => 'GET',  'path' => '/admin/cae/ia/{generationId}/download', 'action' => [CaeAiController::class, 'download']],
 
@@ -105,5 +110,10 @@ return [
         ['method' => 'POST', 'path' => '/portal/{token}/upload',  'action' => [TechnicianPortalController::class, 'upload']],
         ['method' => 'POST', 'path' => '/admin/cae/intake/{id}/approve', 'action' => [CaeController::class, 'approveIntake']],
         ['method' => 'POST', 'path' => '/admin/cae/intake/{id}/reject', 'action' => [CaeController::class, 'rejectIntake']],
+
+        ['method' => 'POST', 'path' => '/admin/dev/aeat-cotejo-probe', 'action' => [AeatCotejoTestController::class, 'probe']],
+        ['method' => 'GET',  'path' => '/admin/dev/aeat-cotejo-probe', 'action' => [AeatCotejoTestController::class, 'probe']],
+
+        ['method' => 'POST', 'path' => '/admin/cae/documentos/{documentId}/verify-aeat', 'action' => [CaeController::class, 'verifyAeatDocument']],
     ],
 ];

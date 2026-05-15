@@ -116,7 +116,7 @@ final class NotificationController extends Controller
         $communityId = (int) ($payload['community_id'] ?? 0);
         $type        = (string) ($notif['type'] ?? '');
 
-        if ($role === 'admin' && $communityId > 0 && $type === 'rl_request_created') {
+        if ($role === 'admin' && $communityId > 0 && in_array($type, ['rl_request_created', 'rl_report_uploaded_by_gestor'], true)) {
             header('Location: ' . $this->baseUrl() . '/admin/comunidades/' . $communityId . '#c-rl');
             exit;
         }
