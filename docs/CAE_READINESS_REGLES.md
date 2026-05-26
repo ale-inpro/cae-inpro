@@ -113,7 +113,7 @@ Si falla extracción de CSV, cotejo ≠ 1, o huella no coincide: el documento **
 ## 8. Estado de implementación (pasos 2–7)
 
 - **Hecho:** Pasos **2–4** (readiness, slot único, AEAT hook). Paso **5–6–7** en **revisión CAE** (`history.php`): generación IA solo con complementarios del CAE vigente (**`CaeAiController::generate`** + **`CaeReadinessService`**), sin chips ni `new_docs`; mensajes de bloqueo multilínea; solicitud de documentos con **modal Bootstrap** (`modalCaeRequestDocsConfirm`) y `data-replaces-filename`; sin botón «Verificar» AEAT en el bloque IA (la verificación es automática al publicar + reglas readiness).
-- **Hecho:** Estado unificado **«Válido para CAE» / «No válido para CAE»** vía **`CaeDocumentValidityService`** (misma lógica de fechas + AEAT en Hacienda que readiness): ficha técnico (`technicians/show`) con detalle desplegable; chips en revisión CAE con badge de validez; `CaeAiService::determineStatus` simplificado tras readiness.
+- **Hecho:** Estado unificado **«Válido» / «No válido»** vía **`CaeDocumentValidityService`** (misma lógica de fechas + AEAT en Hacienda que readiness): ficha técnico (`technicians/show`) con detalle desplegable; chips en revisión CAE con badge de validez; PRL marcado como opcional al generar; `CaeAiService::determineStatus` simplificado tras readiness.
 - **Pendiente / siguiente fase:** Pruebas E2E; pulir textos restantes en otras pantallas si aparece lenguaje antiguo.
 - **Hecho (post-builder):** `GET /admin/tecnicos/{id}/cae/ia/builder` redirige a la revisión CAE (`history#cae-manage`). Vista `cae.ai_builder` queda obsoleta (no se renderiza). Flash `pending_docs` en `save()` usa los cuatro tipos actuales.
 

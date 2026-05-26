@@ -3,19 +3,27 @@
 $ab   = htmlspecialchars(rtrim($areaBaseUrl ?? '', '/'));
 $role = (string) ($_SESSION['user']['role'] ?? 'gestor');
 
-// Construye la URL de destino según el rol, tipo y payload.
-// - Admin + rl_request_created → endpoint /open que marca como leída y redirige al #c-rl.
-// - Gestor o cualquier otro tipo → sin enlace (se queda en notificaciones).
 $notifUrl = static function (array $n) use ($ab, $role): string {
-    if ($role !== 'admin') {
-        return ''; // el gestor no navega desde notificaciones
-    }
-
     $type = (string) ($n['type'] ?? '');
     $id   = (int) ($n['id'] ?? 0);
+    if ($id <= 0) {
+        return '';
+    }
 
-    if ($id > 0 && in_array($type, ['rl_request_created', 'rl_report_uploaded_by_gestor'], true)) {
-        // Pasa por el endpoint que marca como leída y luego redirige
+    if ($role === 'admin') {
+        $adminOpenTypes = [
+            'rl_request_created',
+            'rl_report_uploaded_by_gestor',
+            'community_tech_not_preferred',
+            'technician_association_requested',
+            'technician_created_by_gestor',
+        ];
+        if (in_array($type, $adminOpenTypes, true)) {
+            return $ab . '/notificaciones/' . $id . '/open';
+        }
+    }
+
+    if ($role === 'gestor' && in_array($type, ['technician_association_approved', 'technician_association_rejected'], true)) {
         return $ab . '/notificaciones/' . $id . '/open';
     }
 
@@ -66,7 +74,7 @@ $notifUrl = static function (array $n) use ($ab, $role): string {
                     <?php
                     // PostgreSQL devuelve bool como 't'/'f' — convertir correctamente
                     $isRead  = in_array($n['is_read'] ?? false, [true, 't', '1'], true);
-                    $created = date('d/m/Y H:i', strtotime((string) ($n['created_at'] ?? 'now')));
+                    $created = app_datetime($n['created_at'] ?? null);
                     $destUrl = $notifUrl($n);
                     $icon = match ((string) ($n['type'] ?? '')) {
                         'rl_request_created'  => 'bi-file-earmark-diff text-warning',
@@ -76,6 +84,11 @@ $notifUrl = static function (array $n) use ($ab, $role): string {
                         'rl_request_rejected',
                         'rl_report_rejected'  => 'bi-x-circle text-danger',
                         'rl_report_deleted'   => 'bi-trash text-secondary',
+                        'community_tech_not_preferred' => 'bi-person-x text-danger',
+                        'technician_association_requested' => 'bi-person-plus text-warning',
+                        'technician_created_by_gestor' => 'bi-person-badge text-primary',
+                        'technician_association_approved' => 'bi-check-circle text-success',
+                        'technician_association_rejected' => 'bi-x-circle text-danger',
                         default               => 'bi-info-circle text-secondary',
                     };
                     ?>

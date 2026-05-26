@@ -74,7 +74,7 @@ final class NotificationController extends Controller
 
     /**
      * Marca la notificación como leída y redirige a su destino contextual.
-     * Solo para admin. Las notificaciones sin destino redirigen a la lista.
+     * Marca como leída y redirige según tipo (admin y gestor).
      * @param array<string, string> $params
      */
     public function openNotification(array $params = []): void
@@ -110,15 +110,43 @@ final class NotificationController extends Controller
             UPDATE notifications SET is_read = TRUE WHERE id = :id AND user_id = :uid
         ")->execute(['id' => $notifId, 'uid' => $userId]);
 
-        // Construir URL de destino según tipo y payload (solo admin)
         $role    = (string) ($_SESSION['user']['role'] ?? '');
         $payload = json_decode((string) ($notif['payload_json'] ?? '{}'), true) ?? [];
         $communityId = (int) ($payload['community_id'] ?? 0);
+        $technicianId = (int) ($payload['technician_id'] ?? 0);
         $type        = (string) ($notif['type'] ?? '');
+        $base = $this->baseUrl();
 
-        if ($role === 'admin' && $communityId > 0 && in_array($type, ['rl_request_created', 'rl_report_uploaded_by_gestor'], true)) {
-            header('Location: ' . $this->baseUrl() . '/admin/comunidades/' . $communityId . '#c-rl');
-            exit;
+        if ($role === 'admin') {
+            if ($type === 'technician_association_requested') {
+                header('Location: ' . $base . '/admin/tecnicos/solicitudes');
+                exit;
+            }
+            if ($type === 'technician_created_by_gestor' && $technicianId > 0) {
+                header('Location: ' . $base . '/admin/tecnicos/' . $technicianId);
+                exit;
+            }
+            if ($communityId > 0) {
+                if (in_array($type, ['rl_request_created', 'rl_report_uploaded_by_gestor'], true)) {
+                    header('Location: ' . $base . '/admin/comunidades/' . $communityId . '#c-rl');
+                    exit;
+                }
+                if ($type === 'community_tech_not_preferred') {
+                    header('Location: ' . $base . '/admin/comunidades/' . $communityId . '#c-tech');
+                    exit;
+                }
+            }
+        }
+
+        if ($role === 'gestor') {
+            if ($type === 'technician_association_approved' && $technicianId > 0) {
+                header('Location: ' . $base . '/gestor/tecnicos/' . $technicianId);
+                exit;
+            }
+            if ($type === 'technician_association_rejected') {
+                header('Location: ' . $base . '/gestor/tecnicos/vincular');
+                exit;
+            }
         }
 
         header('Location: ' . $fallback);
@@ -156,7 +184,7 @@ final class NotificationController extends Controller
 
         foreach ($items as &$item) {
             $item['is_read']     = $this->boolFromPg($item['is_read']);
-            $item['created_fmt'] = date('d/m H:i', strtotime((string) $item['created_at']));
+            $item['created_fmt'] = app_datetime($item['created_at'] ?? null);
             $item['payload'] = !empty($item['payload_json'])
                 ? json_decode((string) $item['payload_json'], true)
                 : null;

@@ -363,6 +363,36 @@ body{
     padding: .3rem .55rem;
 }
 
+/* Fechas en interfaz */
+.date-display {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+  }
+  
+  .date-range {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #334155;
+  }
+  
+  .date-range__sep {
+    color: #94a3b8;
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+
+.badge-doc-optional {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #047857;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+}
+
 .rl-actions {
     display: flex;
     flex-wrap: wrap;
@@ -538,11 +568,13 @@ body{
 
 /* Acciones icon-only coherentes */
 .actions-cell .btn,
+.table-actions .btn,
 .page-header-right .btn {
     min-width: 32px;
     min-height: 32px;
     display: inline-grid;
     place-items: center;
+    border-radius: 10px;
 }
 
 .btn {
@@ -570,6 +602,7 @@ body{
     display: inline-flex;
     align-items: center;
     gap: .45rem;
+    white-space: nowrap;
 }
 
 .table-actions form { margin: 0; }
@@ -956,9 +989,6 @@ body{
 /* Acciones en tabla más limpias */
 .actions-cell {
     white-space: nowrap;
-}
-.actions-cell .btn {
-    border-radius: 10px;
 }
 
 /* Marca sidebar */
@@ -1348,6 +1378,76 @@ white-space: nowrap;
     max-width: 100%;
 }
 
+/* Solicitud documentos al técnico — compacto, 2 columnas, checkbox visible */
+.cae-request-doc-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: .4rem .65rem;
+}
+
+@media (min-width: 576px) {
+    .cae-request-doc-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: .45rem .85rem;
+    }
+}
+
+.cae-request-doc-item .form-check {
+    margin: 0;
+    padding: .42rem .55rem .42rem .42rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: rgba(248, 250, 252, .85);
+    transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
+}
+
+.cae-request-doc-item .form-check:hover {
+    border-color: rgba(16, 185, 129, .35);
+    background: var(--brand-50);
+}
+
+.cae-request-doc-item .form-check-input {
+    width: 1.05rem;
+    height: 1.05rem;
+    margin-top: .28rem;
+    flex-shrink: 0;
+    cursor: pointer;
+    border-color: var(--ink-400);
+}
+
+.cae-request-doc-item .form-check-input:checked {
+    border-color: var(--brand-600);
+    background-color: var(--brand-600);
+}
+
+.cae-request-doc-item .form-check-label {
+    cursor: pointer;
+    padding-left: .35rem;
+    line-height: 1.35;
+}
+
+.cae-request-doc-name {
+    display: block;
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--ink-900);
+}
+
+.cae-request-doc-hint {
+    display: block;
+    margin-top: .18rem;
+    font-size: .68rem;
+    font-weight: 500;
+    color: #b45309;
+    line-height: 1.25;
+}
+
+.cae-request-doc-item .form-check:has(.form-check-input:checked) {
+    border-color: var(--brand-600);
+    background: rgba(236, 253, 245, .95);
+    box-shadow: 0 0 0 1px rgba(16, 185, 129, .18);
+}
+
 /* ===== Admin Ops Dashboard ===== */
 .ops-stat-card{
     background: linear-gradient(180deg, #ffffff 0%, #f8fffb 100%);
@@ -1468,6 +1568,68 @@ white-space: nowrap;
     background:#10b981;
     color:#fff;
     box-shadow:0 6px 16px rgba(16,185,129,.22);
+  }
+
+  /* Botón Solicitudes (admin técnicos) — coherente con filter-chip / verde INPRO */
+.btn-assoc-requests {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    color: #334155;
+    font-weight: 600;
+    font-size: 0.875rem;
+    padding: 0.42rem 0.95rem;
+    border-radius: 999px;
+    text-decoration: none;
+    transition: all 0.16s ease;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  }
+  
+  .btn-assoc-requests:hover {
+    border-color: #86efac;
+    color: #047857;
+    background: #f0fdf4;
+    transform: translateY(-1px);
+  }
+  
+  .btn-assoc-requests.has-pending {
+    border-color: #f59e0b;
+    background: linear-gradient(180deg, #fffbeb 0%, #fff 100%);
+    color: #92400e;
+    box-shadow: 0 4px 14px rgba(245, 158, 11, 0.18);
+  }
+  
+  .btn-assoc-requests.has-pending:hover {
+    border-color: #f59e0b;
+    background: #fffbeb;
+    color: #78350f;
+  }
+  
+  .btn-assoc-requests .btn-assoc-requests-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    min-width: 1.2rem;
+    padding: 0.15em 0.4em;
+    border-radius: 999px;
+  }
+  
+  .btn-assoc-requests-badge.is-hidden {
+    display: none !important;
+  }
+
+  .btn-assoc-requests.app-notif-pulse {
+    animation: assocBtnPulse 0.9s ease 2;
+  }
+
+  @keyframes assocBtnPulse {
+    0%, 100% {
+      box-shadow: 0 4px 14px rgba(245, 158, 11, 0.18);
+    }
+    50% {
+      box-shadow: 0 0 0 8px rgba(245, 158, 11, 0.22);
+    }
   }
 
   /* Notificaciones: click directo y preview en hover */
@@ -1627,3 +1789,216 @@ white-space: nowrap;
       gap: 0.35rem;
     }
   }
+
+  /* Valoración comunidad — técnicos */
+.community-feedback-badge-wrap { min-width: 7rem; }
+
+.community-feedback-modal .modal-content {
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.community-feedback-modal-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(59, 130, 246, 0.14), rgba(37, 99, 235, 0.06));
+  color: #2563eb;
+  font-size: 1.2rem;
+}
+
+.community-feedback-modal-icon--former {
+  background: linear-gradient(145deg, rgba(245, 158, 11, 0.18), rgba(217, 119, 6, 0.06));
+  color: #d97706;
+}
+
+.rgpd-wizard-stepper { display:flex; gap:.5rem; margin-bottom:1.5rem; }
+.rgpd-wizard-step { flex:1; text-align:center; padding:.75rem; border-radius:.75rem; background:#f1f5f9; font-size:.85rem; }
+.rgpd-wizard-step.is-active { background:#ecfdf5; color:#047857; font-weight:600; }
+.rgpd-template-card { border:2px solid #e2e8f0; border-radius:1rem; padding:1rem; cursor:pointer; transition:.15s; }
+.rgpd-template-card.is-selected { border-color:#1a6b3a; background:#f0fdf4; }
+.rgpd-doc-preview { max-height: 420px; overflow-y: auto; font-size: .95rem; line-height: 1.55; }
+.rgpd-doc-preview h2 { font-size: 1.1rem; margin-top: 0; }
+.rgpd-signature-pad canvas { display: block; width: 100%; cursor: crosshair; touch-action: none; }
+
+/* RGPD · panel comunidad (pestañas) */
+.rgpd-community-panel .subpanel-b .table thead th {
+    white-space: nowrap;
+}
+.rgpd-community-panel .rgpd-doc-table td:last-child {
+    min-width: 12rem;
+}
+.rgpd-community-panel .rgpd-pending-item:last-child {
+    border-bottom: 0 !important;
+}
+.rgpd-community-panel .dataTables_wrapper .row:first-child {
+    margin-bottom: .75rem;
+}
+.rgpd-community-panel .tab-pane > .subpanel:last-child {
+    margin-bottom: 0;
+}
+.rgpd-community-panel .table td .btn-sm {
+    white-space: nowrap;
+}
+.rgpd-community-panel #rgpd-solicitudes .table thead th:last-child,
+.rgpd-community-panel #rgpd-solicitudes .table td:last-child {
+    min-width: 11rem;
+}
+
+.rgpd-community-panel #rgpd-solicitudes .dataTables_wrapper {
+    width: 100%;
+}
+.rgpd-community-panel #rgpd-solicitudes table.dataTable {
+    width: 100% !important;
+}
+
+/* RGPD · panel comunidad — refinamiento visual */
+.nav-tabs--modern {
+    border-bottom: 1px solid var(--border);
+    gap: .25rem;
+}
+.nav-tabs--modern .nav-link {
+    border: 0;
+    border-radius: .5rem .5rem 0 0;
+    color: var(--ink-500);
+    font-weight: 600;
+    font-size: .9rem;
+    padding: .55rem 1rem;
+}
+.nav-tabs--modern .nav-link:hover {
+    color: var(--brand-700);
+    background: var(--brand-50);
+}
+.nav-tabs--modern .nav-link.active {
+    color: var(--brand-700);
+    background: #fff;
+    box-shadow: 0 -1px 0 var(--brand-200) inset;
+}
+.rgpd-community-panel .subpanel {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+}
+.rgpd-community-panel .subpanel-h {
+    background: linear-gradient(180deg, #fafbfc, #f4f6f8);
+    font-weight: 600;
+}
+.rgpd-community-panel .table > tbody > tr:hover {
+    background: rgba(16, 185, 129, .04);
+}
+.rgpd-community-panel .rgpd-doc-row-expandable:hover {
+    background: rgba(245, 158, 11, .06);
+}
+.rgpd-doc-meter {
+    max-width: 240px;
+}
+.rgpd-doc-meter-toggle {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: .4rem;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    transition: opacity .15s ease;
+}
+.rgpd-doc-meter-toggle:hover {
+    opacity: .92;
+}
+.rgpd-doc-meter-toggle:focus-visible {
+    outline: 2px solid rgba(16, 185, 129, .35);
+    outline-offset: 3px;
+    border-radius: .35rem;
+}
+.rgpd-doc-meter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .2rem .55rem;
+    border-radius: 999px;
+    font-size: .75rem;
+    font-weight: 600;
+    color: #92400e;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    line-height: 1.3;
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+.rgpd-doc-meter-toggle:hover .rgpd-doc-meter-chip {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(245, 158, 11, .18);
+}
+.rgpd-doc-meter-chip-icon {
+    font-size: .8rem;
+    opacity: .85;
+}
+.rgpd-pending-toggle[aria-expanded="true"] .rgpd-pending-chevron {
+    transform: rotate(180deg);
+}
+.rgpd-pending-chevron {
+    display: inline-block;
+    transition: transform .2s ease;
+    font-size: .7rem;
+    opacity: .75;
+}
+.rgpd-doc-meter-track {
+    display: block;
+    width: 100%;
+    height: 3px;
+    border-radius: 999px;
+    background: #e8edf2;
+    overflow: hidden;
+}
+.rgpd-doc-meter-fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #34d399, #059669);
+    transition: width .25s ease;
+}
+.rgpd-doc-meter-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    width: 100%;
+    font-size: .72rem;
+    color: var(--ink-400);
+    line-height: 1.2;
+}
+.rgpd-doc-meter-pct {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--ink-500);
+}
+.rgpd-pending-panel {
+    background: linear-gradient(180deg, #fffbeb, #fff);
+    border-top: 1px solid #fde68a;
+    padding: .75rem 1rem 1rem;
+}
+.rgpd-pending-panel .rgpd-pending-item {
+    border-radius: .35rem;
+    border-bottom: 1px solid rgba(0, 0, 0, .06);
+}
+.rgpd-pending-panel .rgpd-pending-item:last-child {
+    border-bottom: 0;
+}
+
+/* RGPD · listado contratos */
+.rgpd-contracts-table td:empty {
+    padding-top: .65rem;
+    padding-bottom: .65rem;
+}
+.rgpd-contracts-table .dataTables_wrapper {
+    padding: 0 1rem 1rem;
+}
+.rgpd-contracts-table .dataTables_wrapper .row:first-child {
+    margin-bottom: .75rem;
+}

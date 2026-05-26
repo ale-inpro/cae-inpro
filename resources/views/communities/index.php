@@ -73,7 +73,7 @@ $label = static function (string $status): string {
                 <th>Dirección</th>
                 <th>Localidad</th>
                 <th>Informe RL</th>
-                <th>Acciones</th>
+                <th class="text-end">Acciones</th>
             </tr>
             </thead>
             <tbody>
@@ -87,7 +87,8 @@ $label = static function (string $status): string {
                     <td data-label="Dirección"><?= htmlspecialchars((string) ($row['address'] ?? '-')) ?></td>
                     <td data-label="Localidad"><?= htmlspecialchars((string) ($row['city'] ?? '-')) ?></td>
                     <td data-label="Informe RL"><span class="badge <?= $badgeClass($status) ?>"><?= htmlspecialchars($label($status)) ?></span></td>
-                    <td data-label="Acciones" class="d-flex gap-1 actions-cell">
+                    <td data-label="Acciones" class="text-end text-nowrap">
+                        <div class="table-actions actions-cell justify-content-end">
                         <a href="<?= $ab ?>/comunidades/<?= $id ?>" class="btn btn-sm btn-outline-secondary" title="Abrir ficha">
                             <i class="bi bi-box-arrow-up-right"></i>
                         </a>
@@ -103,6 +104,7 @@ $label = static function (string $status): string {
                                 </button>
                             </form>
                         <?php endif; ?>
+                        </div>
                     </td>
                 </tr>
             <?php endforeach; ?>

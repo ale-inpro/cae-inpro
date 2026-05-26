@@ -212,7 +212,7 @@ final class TechnicianPortalController extends Controller
             ->execute(['id' => (int) $request['id']]);
 
         // Notificar admins en la app
-        $techName = trim(((string) ($request['first_name'] ?? '')) . ' ' . ((string) ($request['last_name'] ?? '')));
+        $techName = trim((string) ($request['display_name'] ?? ''));
         $admins   = $pdo->query("SELECT id FROM users WHERE role = 'admin' LIMIT 10")->fetchAll(PDO::FETCH_COLUMN);
         foreach ($admins as $adminId) {
             $this->createNotification(
@@ -262,7 +262,7 @@ final class TechnicianPortalController extends Controller
             SELECT r.id, r.technician_id, r.cae_record_id,
                    r.documents_requested_json, r.custom_message,
                    r.token_expires_at, r.token_used_at,
-                   t.first_name, t.last_name
+                   t.display_name
             FROM cae_document_requests r
             JOIN technicians t ON t.id = r.technician_id
             WHERE r.upload_token = :token
@@ -282,7 +282,7 @@ final class TechnicianPortalController extends Controller
         }
 
         $docs     = json_decode((string) ($request['documents_requested_json'] ?? '[]'), true) ?: [];
-        $techName = trim(((string) ($request['first_name'] ?? '')) . ' ' . ((string) ($request['last_name'] ?? '')));
+        $techName = trim((string) ($request['display_name'] ?? ''));
 
         return ['form', [
             'request'  => $request,

@@ -12,15 +12,31 @@ use PDO;
  */
 final class CaeReadinessService
 {
-    /** @var list<string> Orden fijo para mensajes y detalle */
-    public const REQUIRED_SUPPORTING_DOC_NAMES = [
+    /** @var list<string> Tipos que pueden subirse como complementarios (ficha técnico, portal, etc.) */
+    public const ALL_SUPPORTING_DOC_NAMES = [
         'Certificado de estar al corriente con Hacienda',
         'Certificado de estar al corriente con Seguridad Social',
         'Póliza de Responsabilidad Civil',
         'Certificado de Prevención de Riesgos Laborales',
     ];
 
+    /**
+     * Obligatorios solo para generar el CAE con IA (sin certificado PRL del técnico).
+     *
+     * @var list<string>
+     */
+    public const REQUIRED_FOR_CAE_GENERATION = [
+        'Certificado de estar al corriente con Hacienda',
+        'Certificado de estar al corriente con Seguridad Social',
+        'Póliza de Responsabilidad Civil',
+    ];
+
+    /** @deprecated Usar ALL_SUPPORTING_DOC_NAMES o REQUIRED_FOR_CAE_GENERATION según el caso */
+    public const REQUIRED_SUPPORTING_DOC_NAMES = self::ALL_SUPPORTING_DOC_NAMES;
+
     public const DOCUMENT_TYPE_NAME_HACIENDA = 'Certificado de estar al corriente con Hacienda';
+
+    public const DOCUMENT_TYPE_NAME_PRL = 'Certificado de Prevención de Riesgos Laborales';
 
     private const HACIENDA_NAME = self::DOCUMENT_TYPE_NAME_HACIENDA;
 
@@ -97,7 +113,7 @@ final class CaeReadinessService
         $hasAeatCols = $this->hasAeatColumns($pdo);
 
         $typeIdsByName = $this->loadActiveSupportingTypeIdsByName($pdo);
-        $missingTypes = array_values(array_diff(self::REQUIRED_SUPPORTING_DOC_NAMES, array_keys($typeIdsByName)));
+        $missingTypes = array_values(array_diff(self::REQUIRED_FOR_CAE_GENERATION, array_keys($typeIdsByName)));
         if ($missingTypes !== []) {
             return [
                 'ok' => false,
@@ -115,7 +131,7 @@ final class CaeReadinessService
         $byType = [];
         $reasons = [];
 
-        foreach (self::REQUIRED_SUPPORTING_DOC_NAMES as $typeName) {
+        foreach (self::REQUIRED_FOR_CAE_GENERATION as $typeName) {
             $typeId = $typeIdsByName[$typeName];
             $row = $docs[$typeId] ?? null;
 
@@ -151,7 +167,7 @@ final class CaeReadinessService
                 } elseif ($exp < $today) {
                     $entry['ok'] = false;
                     $entry['codes'][] = 'expired';
-                    $msg = 'El documento «' . $typeName . '» está caducado (caducidad: ' . $exp->format('Y-m-d') . ').';
+                    $msg = 'El documento «' . $typeName . '» está caducado (caducidad: ' . \App\Support\DateDisplay::date($exp->format('Y-m-d')) . ').';
                     $entry['messages'][] = $msg;
                     $reasons[] = $msg;
                 } else {
@@ -274,7 +290,7 @@ final class CaeReadinessService
      */
     private function loadActiveSupportingTypeIdsByName(PDO $pdo): array
     {
-        $placeholders = implode(',', array_fill(0, count(self::REQUIRED_SUPPORTING_DOC_NAMES), '?'));
+        $placeholders = implode(',', array_fill(0, count(self::REQUIRED_FOR_CAE_GENERATION), '?'));
         $stmt = $pdo->prepare("
             SELECT id, name
             FROM document_types
@@ -283,7 +299,7 @@ final class CaeReadinessService
               AND is_active = TRUE
               AND name IN ($placeholders)
         ");
-        $stmt->execute(self::REQUIRED_SUPPORTING_DOC_NAMES);
+        $stmt->execute(self::REQUIRED_FOR_CAE_GENERATION);
         $out = [];
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $name = (string) ($row['name'] ?? '');

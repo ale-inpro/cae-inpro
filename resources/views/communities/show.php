@@ -9,6 +9,8 @@ $available = $availableTechnicians ?? [];
 $currentUrl = $ab . '/comunidades/' . (int) ($c['id'] ?? 0) . '#c-info';
 $editUrl = $ab . '/comunidades/' . (int) ($c['id'] ?? 0) . '/edit?return_to=' . urlencode($currentUrl);
 $pendingRlRequests = $pendingRlRequests ?? [];
+$communityFormerTechnicians = $communityFormerTechnicians ?? [];
+$communityTechSyncVersion = (string) ($communityTechSyncVersion ?? '');
 
 $riskLabel = static function (string $status): string {
     return match ($status) {
@@ -19,6 +21,7 @@ $riskLabel = static function (string $status): string {
         default => ucfirst($status),
     };
 };
+
 $riskBadge = static function (string $status): string {
     return match ($status) {
         'completed' => 'text-bg-success',
@@ -40,6 +43,7 @@ $caeLabel = static function (string $status): string {
         default        => ucfirst($status),
     };
 };
+
 $caeBadge = static function (string $status): string {
     return match ($status) {
         'approved'     => 'text-bg-success',
@@ -51,6 +55,27 @@ $caeBadge = static function (string $status): string {
         default        => 'text-bg-light text-dark',
     };
 };
+
+$feedbackSentimentLabel = static function (?string $s): string {
+    return match ($s) {
+        'preferred' => 'Preferido por la comunidad',
+        'not_preferred' => 'No recomendado por la comunidad',
+        'neutral' => 'Neutral',
+        default => '',
+    };
+};
+
+$feedbackReasonCategoryLabel = static function (?string $r): string {
+    return match ($r) {
+        'quality' => 'Calidad del trabajo',
+        'deadlines' => 'Plazos',
+        'conduct' => 'Trato / conducta',
+        'communication' => 'Comunicación',
+        'other' => 'Otro',
+        default => '',
+    };
+};
+
 ?>
 <div class="panel-identity mb-3">
     <div class="panel-identity-icon"><i class="bi bi-buildings-fill"></i></div>
@@ -125,7 +150,9 @@ $caeBadge = static function (string $status): string {
         </div>
     </div>
 
-    <div class="tab-pane fade" id="c-tech">
+    <div class="tab-pane fade" id="c-tech"
+        data-community-id="<?= (int) ($c['id'] ?? 0) ?>"
+        data-tech-sync-version="<?= htmlspecialchars($communityTechSyncVersion, ENT_QUOTES, 'UTF-8') ?>">
         <div class="subpanel mb-3">
             <div class="subpanel-h d-flex justify-content-between align-items-center">
                 <span>Técnicos asignados</span>
@@ -134,18 +161,38 @@ $caeBadge = static function (string $status): string {
             <div class="subpanel-b">
                 <div class="table-responsive">
                     <table class="table table-sm align-middle mb-0 table-mobile-cards">
-                        <thead><tr><th>Técnico</th><th>Profesión</th><th>Estado CAE</th><?php if ($isAdmin): ?><th></th><?php endif; ?></tr></thead>
+                        <thead><tr><th>Técnico</th><th>Profesión</th><th>Estado CAE</th><?php if (!$isAdmin): ?><th class="text-nowrap">Valoración comunidad</th><?php endif; ?><?php if ($isAdmin): ?><th></th><?php endif; ?></tr></thead>
                         <tbody>
                         <?php foreach ($techs as $t): ?>
                             <?php
                             $status = (string) ($t['cae_status'] ?? 'pending_docs');
-                            $name = trim(((string) ($t['first_name'] ?? '')) . ' ' . ((string) ($t['last_name'] ?? '')));
+                            $name = trim((string) ($t['display_name'] ?? ''));
                             $tid = (int) ($t['id'] ?? 0);
                             ?>
                             <tr class="community-tech-assigned">
                                 <td data-label="Técnico"><?= htmlspecialchars($name) ?></td>
                                 <td data-label="Profesión"><?= htmlspecialchars((string) ($t['professions'] ?? '-')) ?></td>
                                 <td data-label="Estado CAE"><span class="badge <?= $caeBadge($status) ?>"><?= htmlspecialchars($caeLabel($status)) ?></span></td>
+                                <?php if (!$isAdmin): ?>
+                                    <td data-label="Valoración">
+                                        <?php
+                                            $fs = (string) ($t['feedback_sentiment'] ?? '');
+                                            $fcb = match ($fs) {
+                                                'preferred' => 'success',
+                                                'not_preferred' => 'danger',
+                                                'neutral' => 'secondary',
+                                                default => 'secondary',
+                                            };
+                                        ?>
+                                        <?php if ($fs === ''): ?>
+                                            <span class="text-muted small">Sin valorar</span>
+                                        <?php else: ?>
+                                            <span class="badge text-bg-<?= $fcb ?>"><?= htmlspecialchars($feedbackSentimentLabel($fs)) ?></span>
+                                        <?php endif; ?>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary ms-2"
+                                            data-bs-toggle="modal" data-bs-target="#cfbAssignedModal<?= $tid ?>"><i class="bi bi-chat-square-text me-1"></i>Valorar</button>
+                                    </td>
+                                <?php endif; ?>
                                 <?php if ($isAdmin): ?>
                                     <td data-label="Acciones" class="text-end">
                                         <form method="post" action="<?= $ab ?>/comunidades/<?= (int) ($c['id'] ?? 0) ?>/tecnicos/<?= $tid ?>" data-confirm="¿Desasignar este técnico de la comunidad?">
@@ -162,6 +209,58 @@ $caeBadge = static function (string $status): string {
             </div>
         </div>
 
+        <?php if (!$isAdmin): ?>
+            <?php foreach ($techs as $t): ?>
+                <?php
+                    $tid = (int) ($t['id'] ?? 0);
+                    $fname = trim((string) ($t['display_name'] ?? ''));
+                    $cfbAssignedTitleId = 'cfbAssignedTitle' . $tid;
+                ?>
+                <div class="modal fade community-feedback-modal" id="cfbAssignedModal<?= $tid ?>" tabindex="-1" aria-labelledby="<?= htmlspecialchars($cfbAssignedTitleId, ENT_QUOTES, 'UTF-8') ?>" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+                        <div class="modal-content shadow-lg border-0">
+                            <form method="post" action="<?= $ab ?>/comunidades/<?= (int) ($c['id'] ?? 0) ?>/tecnicos/<?= $tid ?>/feedback">
+                                <input type="hidden" name="return_to" value="<?= htmlspecialchars($ab . '/comunidades/' . (int) ($c['id'] ?? 0) . '#c-tech', ENT_QUOTES, 'UTF-8') ?>">
+                                <div class="modal-header align-items-start gap-2 border-bottom-0 pb-0">
+                                    <div class="d-flex gap-3 flex-grow-1 min-w-0">
+                                        <span class="community-feedback-modal-icon flex-shrink-0" aria-hidden="true"><i class="bi bi-chat-heart-fill"></i></span>
+                                        <div class="min-w-0">
+                                            <h5 class="modal-title mb-1" id="<?= htmlspecialchars($cfbAssignedTitleId, ENT_QUOTES, 'UTF-8') ?>">Valoración de la comunidad</h5>
+                                            <p class="mb-0 small text-muted text-truncate" title="<?= htmlspecialchars($fname, ENT_QUOTES, 'UTF-8') ?>"><i class="bi bi-person-badge me-1"></i><?= htmlspecialchars($fname) ?></p>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="btn-close flex-shrink-0 mt-1" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                                </div>
+                                <div class="modal-body pt-3">
+                                    <label class="form-label fw-semibold"><i class="bi bi-sliders me-1 text-primary"></i>Impresión general</label>
+                                    <select name="sentiment" class="form-select mb-3" required>
+                                        <option value="neutral" <?= (($t['feedback_sentiment'] ?? '') === 'neutral' || ($t['feedback_sentiment'] ?? '') === '') ? 'selected' : '' ?>>Neutral — sin preferencia marcada</option>
+                                        <option value="preferred" <?= (($t['feedback_sentiment'] ?? '') === 'preferred') ? 'selected' : '' ?>>Buena experiencia (preferido)</option>
+                                        <option value="not_preferred" <?= (($t['feedback_sentiment'] ?? '') === 'not_preferred') ? 'selected' : '' ?>>Mala experiencia (no recomendado)</option>
+                                    </select>
+                                    <label class="form-label fw-semibold"><i class="bi bi-tag me-1 text-secondary"></i>Motivo <span class="fw-normal text-muted">(opcional)</span></label>
+                                    <select name="reason_category" class="form-select mb-3">
+                                        <option value="">—</option>
+                                        <option value="quality" <?= (($t['feedback_reason_category'] ?? '') === 'quality') ? 'selected' : '' ?>>Calidad del trabajo</option>
+                                        <option value="deadlines" <?= (($t['feedback_reason_category'] ?? '') === 'deadlines') ? 'selected' : '' ?>>Plazos</option>
+                                        <option value="conduct" <?= (($t['feedback_reason_category'] ?? '') === 'conduct') ? 'selected' : '' ?>>Trato / conducta</option>
+                                        <option value="communication" <?= (($t['feedback_reason_category'] ?? '') === 'communication') ? 'selected' : '' ?>>Comunicación</option>
+                                        <option value="other" <?= (($t['feedback_reason_category'] ?? '') === 'other') ? 'selected' : '' ?>>Otro</option>
+                                    </select>
+                                    <label class="form-label fw-semibold"><i class="bi bi-chat-left-text me-1 text-secondary"></i>Comentario breve <span class="fw-normal text-muted">(opcional, máx. 280)</span></label>
+                                    <textarea name="comment" class="form-control" rows="3" maxlength="280" placeholder="Ej.: puntualidad, resolución de incidencias…"><?= htmlspecialchars((string) ($t['feedback_comment'] ?? '')) ?></textarea>
+                                </div>
+                                <div class="modal-footer border-top-0 pt-0 gap-2">
+                                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal"><i class="bi bi-x-lg me-1"></i>Cancelar</button>
+                                    <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Guardar valoración</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
+
         <?php if ($isAdmin && !empty($available)): ?>
             <div class="subpanel mb-3">
                 <div class="subpanel-h d-flex justify-content-between align-items-center">
@@ -171,16 +270,46 @@ $caeBadge = static function (string $status): string {
                 <div class="subpanel-b">
                     <div class="table-responsive">
                         <table class="table table-sm align-middle mb-0 table-mobile-cards">
-                            <thead><tr><th>Técnico</th><th>Profesión</th><th></th></tr></thead>
+                            <thead><tr><th>Técnico</th><th>Profesión</th><th class="text-nowrap">Notas comunidad</th><th class="text-end" style="width:1%">Acciones</th></tr></thead>
                             <tbody>
                             <?php foreach ($available as $a): ?>
-                                <?php $tid = (int) ($a['id'] ?? 0); ?>
+                                <?php
+                                    $tid = (int) ($a['id'] ?? 0);
+                                    $aName = trim((string) ($a['display_name'] ?? ''));
+                                    $afs = (string) ($a['feedback_sentiment'] ?? '');
+                                    $aReasonKey = (string) ($a['feedback_reason_category'] ?? '');
+                                    $aReasonLbl = $feedbackReasonCategoryLabel($aReasonKey !== '' ? $aReasonKey : null);
+                                    $aComment = trim((string) ($a['feedback_comment'] ?? ''));
+                                    $assignWarn = ($afs === 'not_preferred');
+                                ?>
                                 <tr class="community-tech-available">
-                                    <td data-label="Técnico"><?= htmlspecialchars(trim(((string) ($a['first_name'] ?? '')) . ' ' . ((string) ($a['last_name'] ?? '')))) ?></td>
+                                    <td data-label="Técnico"><?= htmlspecialchars($aName) ?></td>
                                     <td data-label="Profesión"><?= htmlspecialchars((string) ($a['professions'] ?? '-')) ?></td>
+                                    <td data-label="Notas comunidad" class="community-feedback-badge-wrap">
+                                        <?php if ($afs === 'not_preferred'): ?>
+                                            <span class="badge text-bg-danger" title="<?= htmlspecialchars($aComment, ENT_QUOTES, 'UTF-8') ?>">No recomendado</span>
+                                        <?php elseif ($afs === 'preferred'): ?>
+                                            <span class="badge text-bg-success" title="<?= htmlspecialchars($aComment, ENT_QUOTES, 'UTF-8') ?>">Preferido</span>
+                                        <?php elseif ($afs === 'neutral'): ?>
+                                            <span class="badge text-bg-secondary">Neutral</span>
+                                        <?php else: ?>
+                                            <span class="text-muted small">—</span>
+                                        <?php endif; ?>
+                                    </td>
                                     <td data-label="Acciones" class="text-end">
-                                        <form method="post" action="<?= $ab ?>/comunidades/<?= (int) ($c['id'] ?? 0) ?>/tecnicos/<?= $tid ?>">
-                                            <button class="btn btn-sm btn-outline-success" type="submit" title="Asignar"><i class="bi bi-person-plus"></i></button>
+                                        <form method="post" action="<?= $ab ?>/comunidades/<?= (int) ($c['id'] ?? 0) ?>/tecnicos/<?= $tid ?>" class="m-0 community-assign-tech-form">
+                                            <button
+                                                class="btn btn-sm btn-outline-success"
+                                                type="<?= $assignWarn ? 'button' : 'submit' ?>"
+                                                title="Asignar"
+                                                <?php if ($assignWarn): ?>
+                                                data-assign-not-preferred-warn="1"
+                                                data-tech-name="<?= htmlspecialchars($aName, ENT_QUOTES, 'UTF-8') ?>"
+                                                data-community-name="<?= htmlspecialchars((string) ($c['name'] ?? 'Comunidad'), ENT_QUOTES, 'UTF-8') ?>"
+                                                data-reason-label="<?= htmlspecialchars($aReasonLbl, ENT_QUOTES, 'UTF-8') ?>"
+                                                data-comment="<?= htmlspecialchars($aComment, ENT_QUOTES, 'UTF-8') ?>"
+                                                <?php endif; ?>
+                                            ><i class="bi bi-person-plus"></i></button>
                                         </form>
                                     </td>
                                 </tr>
@@ -190,6 +319,142 @@ $caeBadge = static function (string $status): string {
                     </div>
                 </div>
             </div>
+        <?php endif; ?>
+
+        <?php if ($isAdmin && !empty($available)): ?>
+        <div class="modal fade" id="modalAssignNotPreferred" tabindex="-1" aria-labelledby="modalAssignNotPreferredLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content border-0 shadow-lg">
+                    <div class="modal-header border-bottom-0 pb-0">
+                        <div class="d-flex gap-3 align-items-start">
+                            <span class="community-feedback-modal-icon community-feedback-modal-icon--former flex-shrink-0" aria-hidden="true">
+                                <i class="bi bi-exclamation-triangle-fill"></i>
+                            </span>
+                            <div>
+                                <h5 class="modal-title mb-1" id="modalAssignNotPreferredLabel">Asignar técnico no recomendado</h5>
+                                <p class="small text-muted mb-0">La comunidad ha valorado negativamente a este técnico.</p>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                    </div>
+                    <div class="modal-body pt-3">
+                        <p class="mb-0" id="modalAssignNotPreferredText"></p>
+                    </div>
+                    <div class="modal-footer border-top-0 gap-2">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                            <i class="bi bi-x-lg me-1"></i>Cancelar
+                        </button>
+                        <button type="button" class="btn btn-warning" id="modalAssignNotPreferredConfirm">
+                            <i class="bi bi-person-plus me-1"></i>Asignar de todos modos
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <?php if (!$isAdmin && !empty($communityFormerTechnicians)): ?>
+        <div class="subpanel mb-3">
+            <div class="subpanel-h d-flex justify-content-between align-items-center">
+                <span>Técnicos desasignados recientes</span>
+                <span class="badge text-bg-secondary"><?= count($communityFormerTechnicians) ?></span>
+            </div>
+            <div class="subpanel-b">
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0 table-mobile-cards">
+                        <thead>
+                            <tr>
+                                <th>Técnico</th>
+                                <th>Profesión</th>
+                                <th class="text-nowrap">Desasignado</th>
+                                <th class="text-nowrap">Valoración</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        <?php foreach ($communityFormerTechnicians as $ft): ?>
+                            <?php
+                                $tid = (int) ($ft['id'] ?? 0);
+                                $fname = trim((string) ($ft['display_name'] ?? ''));
+                                $fs = (string) ($ft['feedback_sentiment'] ?? '');
+                                $fcb = match ($fs) {
+                                    'preferred' => 'success',
+                                    'not_preferred' => 'danger',
+                                    'neutral' => 'secondary',
+                                    default => 'secondary',
+                                };
+                                $ua = $ft['unassigned_at'] ?? null;
+                                $uaFmt = $ua ? app_datetime((string) $ua) : '—';
+                            ?>
+                            <tr class="community-tech-former">
+                                <td data-label="Técnico"><?= htmlspecialchars($fname) ?></td>
+                                <td data-label="Profesión"><?= htmlspecialchars((string) ($ft['professions'] ?? '-')) ?></td>
+                                <td data-label="Desasignado" class="text-muted small"><?= htmlspecialchars($uaFmt) ?></td>
+                                <td data-label="Valoración">
+                                    <?php if ($fs === ''): ?>
+                                        <span class="text-muted small">Sin valorar</span>
+                                    <?php else: ?>
+                                        <span class="badge text-bg-<?= $fcb ?>"><?= htmlspecialchars($feedbackSentimentLabel($fs)) ?></span>
+                                    <?php endif; ?>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary ms-2"
+                                        data-bs-toggle="modal" data-bs-target="#cfbFormerModal<?= $tid ?>"><i class="bi bi-chat-square-text me-1"></i>Valorar</button>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <?php foreach ($communityFormerTechnicians as $ft): ?>
+            <?php
+                $tid = (int) ($ft['id'] ?? 0);
+                $fname = trim((string) ($ft['display_name'] ?? ''));
+                $cfbFormerTitleId = 'cfbFormerTitle' . $tid;
+            ?>
+            <div class="modal fade community-feedback-modal" id="cfbFormerModal<?= $tid ?>" tabindex="-1" aria-labelledby="<?= htmlspecialchars($cfbFormerTitleId, ENT_QUOTES, 'UTF-8') ?>" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+                    <div class="modal-content shadow-lg border-0">
+                        <form method="post" action="<?= $ab ?>/comunidades/<?= (int) ($c['id'] ?? 0) ?>/tecnicos/<?= $tid ?>/feedback">
+                            <input type="hidden" name="return_to" value="<?= htmlspecialchars($ab . '/comunidades/' . (int) ($c['id'] ?? 0) . '#c-tech', ENT_QUOTES, 'UTF-8') ?>">
+                            <div class="modal-header align-items-start gap-2 border-bottom-0 pb-0">
+                                <div class="d-flex gap-3 flex-grow-1 min-w-0">
+                                    <span class="community-feedback-modal-icon community-feedback-modal-icon--former flex-shrink-0" aria-hidden="true"><i class="bi bi-person-dash"></i></span>
+                                    <div class="min-w-0">
+                                        <h5 class="modal-title mb-1" id="<?= htmlspecialchars($cfbFormerTitleId, ENT_QUOTES, 'UTF-8') ?>">Valoración · técnico desasignado</h5>
+                                        <p class="mb-0 small text-muted text-truncate" title="<?= htmlspecialchars($fname, ENT_QUOTES, 'UTF-8') ?>"><i class="bi bi-person-badge me-1"></i><?= htmlspecialchars($fname) ?></p>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn-close flex-shrink-0 mt-1" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                            </div>
+                            <div class="modal-body pt-3">
+                                <label class="form-label fw-semibold"><i class="bi bi-sliders me-1 text-primary"></i>Impresión general</label>
+                                <select name="sentiment" class="form-select mb-3" required>
+                                    <option value="neutral" <?= (($ft['feedback_sentiment'] ?? '') === 'neutral' || ($ft['feedback_sentiment'] ?? '') === '') ? 'selected' : '' ?>>Neutral — sin preferencia marcada</option>
+                                    <option value="preferred" <?= (($ft['feedback_sentiment'] ?? '') === 'preferred') ? 'selected' : '' ?>>Buena experiencia (preferido)</option>
+                                    <option value="not_preferred" <?= (($ft['feedback_sentiment'] ?? '') === 'not_preferred') ? 'selected' : '' ?>>Mala experiencia (no recomendado)</option>
+                                </select>
+                                <label class="form-label fw-semibold"><i class="bi bi-tag me-1 text-secondary"></i>Motivo <span class="fw-normal text-muted">(opcional)</span></label>
+                                <select name="reason_category" class="form-select mb-3">
+                                    <option value="">—</option>
+                                    <option value="quality" <?= (($ft['feedback_reason_category'] ?? '') === 'quality') ? 'selected' : '' ?>>Calidad del trabajo</option>
+                                    <option value="deadlines" <?= (($ft['feedback_reason_category'] ?? '') === 'deadlines') ? 'selected' : '' ?>>Plazos</option>
+                                    <option value="conduct" <?= (($ft['feedback_reason_category'] ?? '') === 'conduct') ? 'selected' : '' ?>>Trato / conducta</option>
+                                    <option value="communication" <?= (($ft['feedback_reason_category'] ?? '') === 'communication') ? 'selected' : '' ?>>Comunicación</option>
+                                    <option value="other" <?= (($ft['feedback_reason_category'] ?? '') === 'other') ? 'selected' : '' ?>>Otro</option>
+                                </select>
+                                <label class="form-label fw-semibold"><i class="bi bi-chat-left-text me-1 text-secondary"></i>Comentario breve <span class="fw-normal text-muted">(opcional, máx. 280)</span></label>
+                                <textarea name="comment" class="form-control" rows="3" maxlength="280" placeholder="Ej.: puntualidad, resolución de incidencias…"><?= htmlspecialchars((string) ($ft['feedback_comment'] ?? '')) ?></textarea>
+                            </div>
+                            <div class="modal-footer border-top-0 pt-0 gap-2">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal"><i class="bi bi-x-lg me-1"></i>Cancelar</button>
+                                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Guardar valoración</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        <?php endforeach; ?>
         <?php endif; ?>
 
         <?php if (empty($techs)): ?>
@@ -235,7 +500,7 @@ $caeBadge = static function (string $status): string {
                     <tr>
                         <td data-label="Documento"><?= htmlspecialchars((string) ($d['document_name'] ?? '-')) ?></td>
                         <td data-label="Archivo"><?= htmlspecialchars((string) ($d['original_filename'] ?? '-')) ?></td>
-                        <td data-label="Subida"><?= htmlspecialchars((string) ($d['uploaded_at'] ?? '-')) ?></td>
+                        <td data-label="Subida"><?= app_datetime($d['uploaded_at'] ?? null) ?></td>
                         <td data-label="Acciones" class="text-end">
                             <div class="table-actions">
                                 <?php if (!empty($d['storage_path'])): ?>
@@ -302,7 +567,7 @@ $caeBadge = static function (string $status): string {
                                                 <div class="text-muted small fst-italic mt-1">"<?= htmlspecialchars((string) $req['request_notes']) ?>"</div>
                                             <?php endif; ?>
                                             <div class="text-muted" style="font-size:0.7rem;">
-                                                <?= date('d/m/Y H:i', strtotime((string) $req['requested_at'])) ?>
+                                                <?= app_datetime((string) ($req['requested_at'] ?? null)) ?>
                                                 &nbsp;·&nbsp;
                                                 <?php $reqStatusLabel = match((string)$req['status']) { 'requested' => 'Pendiente', 'in_progress' => 'En proceso', default => ucfirst((string)$req['status']) }; ?>
                                                 <span class="badge text-bg-secondary"><?= $reqStatusLabel ?></span>
@@ -406,7 +671,7 @@ $caeBadge = static function (string $status): string {
                                 <p class="rl-file-name mb-0"><?= htmlspecialchars((string) ($risk['report_filename'] ?? 'No disponible')) ?></p>
                             </div>
                             <?php if (!empty($risk['completed_at'])): ?>
-                                <span class="rl-date-chip">Completado: <?= htmlspecialchars((string) $risk['completed_at']) ?></span>
+                                <span class="rl-date-chip">Completado: <?= app_datetime((string) ($risk['completed_at'] ?? null)) ?></span>
                             <?php endif; ?>
                         </div>
 
@@ -447,4 +712,49 @@ $caeBadge = static function (string $status): string {
             </div>
         </div>
     </div>
+
+    <?php if ($isAdmin && !empty($available)): ?>
+        <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const modalEl = document.getElementById('modalAssignNotPreferred');
+        if (!modalEl || !window.bootstrap) return;
+
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        const textEl = document.getElementById('modalAssignNotPreferredText');
+        const confirmBtn = document.getElementById('modalAssignNotPreferredConfirm');
+        if (!textEl || !confirmBtn) return;
+
+        let pendingForm = null;
+
+        document.querySelectorAll('[data-assign-not-preferred-warn="1"]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                pendingForm = btn.closest('form');
+                const community = btn.dataset.communityName || 'la comunidad';
+                const tech = btn.dataset.techName || 'este técnico';
+                const reason = btn.dataset.reasonLabel || '';
+                const comment = btn.dataset.comment || '';
+
+                let msg = 'La comunidad «' + community + '» no está satisfecha con el técnico «' + tech + '»';
+                if (reason) msg += ' por ' + reason.toLowerCase();
+                msg += '.';
+                if (comment) msg += ' Comentario: «' + comment + '».';
+                msg += ' ¿Deseas asignarlo de todos modos?';
+
+                textEl.textContent = msg;
+                modal.show();
+            });
+        });
+
+        confirmBtn.addEventListener('click', () => {
+            if (pendingForm) pendingForm.submit();
+            pendingForm = null;
+            modal.hide();
+        });
+
+        modalEl.addEventListener('hidden.bs.modal', () => {
+            pendingForm = null;
+        });
+    });
+    </script>
+    <?php endif; ?>
 </div>

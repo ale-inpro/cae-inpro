@@ -76,7 +76,7 @@ if ($typeMap === []) {
 
 // técnicos activos
 $techs = $pdo->query("
-    SELECT id, first_name, last_name, email
+    SELECT id, display_name, email
     FROM technicians
     WHERE is_active = TRUE
 ")->fetchAll(PDO::FETCH_ASSOC);
@@ -186,7 +186,7 @@ foreach ($techs as $tech) {
     $requestId = (int)$stmt->fetchColumn();
 
     $portalUrl = $baseUrl . '/portal/' . $token;
-    $techName = trim(((string)$tech['first_name']) . ' ' . ((string)$tech['last_name']));
+    $techName = trim((string) ($tech['display_name'] ?? ''));
 
     $listHtml = '';
     foreach ($toRequest as $d) {

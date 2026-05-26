@@ -290,7 +290,7 @@ final class DashboardController extends Controller
             (
                 SELECT
                     'CAE'::text AS item_type,
-                    TRIM(COALESCE(t.first_name, '') || ' ' || COALESCE(t.last_name, ''))::text AS item_label,
+                    COALESCE(t.display_name, 'Técnico')::text AS item_label,
                     ('Técnico #' || c.technician_id || ' · Estado: ' || c.status::text)::text AS item_detail,
                     GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - COALESCE(c.updated_at, c.created_at))) / 86400))::int AS age_days,
                     '/admin/tecnicos/' || c.technician_id || '/cae' AS item_url,
@@ -309,7 +309,7 @@ final class DashboardController extends Controller
             (
                 SELECT
                     'Solicitud Docs'::text AS item_type,
-                    TRIM(COALESCE(t.first_name, '') || ' ' || COALESCE(t.last_name, ''))::text AS item_label,
+                    COALESCE(t.display_name, 'Técnico')::text AS item_label,
                     ('Técnico #' || r.technician_id || ' · Solicitud enviada sin respuesta')::text AS item_detail,
                     GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - r.created_at)) / 86400))::int AS age_days,
                     '/admin/tecnicos/' || r.technician_id || '/cae' AS item_url,

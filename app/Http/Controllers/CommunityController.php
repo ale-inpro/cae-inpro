@@ -161,18 +161,26 @@ final class CommunityController extends Controller
         $stmt = $pdo->prepare("
             SELECT
                 t.id,
-                t.first_name,
-                t.last_name,
+                t.display_name,
+                t.entity_type,
+                t.tax_id,
                 t.professions,
-                COALESCE(c.status::text, 'pending_docs') AS cae_status
+                COALESCE(c.status::text, 'pending_docs') AS cae_status,
+                f.sentiment AS feedback_sentiment,
+                f.reason_category AS feedback_reason_category,
+                f.comment AS feedback_comment,
+                f.rated_at AS feedback_rated_at
             FROM community_technician ct
             JOIN technicians t ON t.id = ct.technician_id
             LEFT JOIN cae_records c
                 ON c.technician_id = t.id
-               AND c.is_current = TRUE
+            AND c.is_current = TRUE
+            LEFT JOIN community_technician_feedback f
+                ON f.community_id = ct.community_id
+            AND f.technician_id = t.id
             WHERE ct.community_id = :id
-              AND ct.status = 'assigned'
-            ORDER BY t.last_name, t.first_name
+            AND ct.status = 'assigned'
+            ORDER BY t.display_name
         ");
         $stmt->execute(['id' => $id]);
         $communityTechnicians = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -198,20 +206,27 @@ final class CommunityController extends Controller
             $stmt = $pdo->prepare("
                 SELECT
                     t.id,
-                    t.first_name,
-                    t.last_name,
-                    t.professions
+                    t.display_name,
+                    t.entity_type,
+                    t.tax_id,
+                    t.professions,
+                    f.sentiment AS feedback_sentiment,
+                    f.reason_category AS feedback_reason_category,
+                    f.comment AS feedback_comment
                 FROM manager_company_technician mct
                 JOIN technicians t ON t.id = mct.technician_id
                 LEFT JOIN community_technician ct
                     ON ct.community_id = :cid
                 AND ct.technician_id = t.id
                 AND ct.status = 'assigned'
+                LEFT JOIN community_technician_feedback f
+                    ON f.community_id = :cid
+                AND f.technician_id = t.id
                 WHERE mct.manager_company_id = :mc
                 AND mct.status = 'active'
                 AND t.is_active = TRUE
                 AND ct.id IS NULL
-                ORDER BY t.last_name, t.first_name
+                ORDER BY t.display_name
             ");
             $stmt->execute([
                 'cid' => $id,
@@ -253,6 +268,39 @@ final class CommunityController extends Controller
             $pendingRlRequests = $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
 
+        $communityFormerTechnicians = [];
+        if ($role === 'gestor') {
+            $stmt = $pdo->prepare("
+                SELECT
+                    t.id,
+                    t.display_name,
+                    t.entity_type,
+                    t.tax_id,
+                    t.professions,
+                    ct.unassigned_at,
+                    f.sentiment AS feedback_sentiment,
+                    f.reason_category AS feedback_reason_category,
+                    f.comment AS feedback_comment,
+                    f.rated_at AS feedback_rated_at
+                FROM community_technician ct
+                JOIN technicians t ON t.id = ct.technician_id
+                LEFT JOIN community_technician_feedback f
+                    ON f.community_id = ct.community_id
+                   AND f.technician_id = t.id
+                WHERE ct.community_id = :id
+                  AND ct.status = 'unassigned'
+                ORDER BY ct.unassigned_at DESC NULLS LAST
+                LIMIT 15
+            ");
+            $stmt->execute(['id' => $id]);
+            $communityFormerTechnicians = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+
+        $communityTechSyncVersion = '';
+        if ($this->currentArea() === 'admin') {
+            $communityTechSyncVersion = $this->communityTechSyncVersion($pdo, $id);
+        }
+
         $this->render('communities.show', [
             'title'                => 'Detalle Comunidad',
             'baseUrl'              => $this->baseUrl(),
@@ -265,6 +313,8 @@ final class CommunityController extends Controller
             'availableTechnicians' => $availableTechnicians,
             'communityDocTypes'    => $communityDocTypes,
             'pendingRlRequests'    => $pendingRlRequests,
+            'communityFormerTechnicians' => $communityFormerTechnicians,
+            'communityTechSyncVersion' => $communityTechSyncVersion,
         ]);
     }
 
@@ -850,6 +900,250 @@ final class CommunityController extends Controller
         }
 
         return $errors;
+    }
+
+    /** POST: valoración comunidad ↔ técnico (solo gestor). */
+    /** @param array<string, string> $params */
+    public function saveTechnicianFeedback(array $params = []): void
+    {
+        $this->assertAreaAccess();
+
+        if ((string) ($_SESSION['user']['role'] ?? '') !== 'gestor') {
+            http_response_code(403);
+            $this->respond('Solo los gestores pueden registrar valoraciones.');
+            return;
+        }
+
+        $communityId = (int) ($params['id'] ?? 0);
+        $techId = (int) ($params['techId'] ?? 0);
+        $returnTo = (string) ($_POST['return_to'] ?? ($this->areaBaseUrl() . '/comunidades/' . $communityId . '#c-tech'));
+
+        if ($communityId <= 0 || $techId <= 0) {
+            $this->flash('Datos inválidos.', 'danger', 'Error');
+            header('Location: ' . $this->areaBaseUrl() . '/comunidades');
+            exit;
+        }
+
+        $pdo = Database::connection();
+        $managerCompanyId = $this->currentUserManagerCompanyId($pdo);
+
+        $stmt = $pdo->prepare("
+            SELECT id FROM communities
+            WHERE id = :id AND is_active = TRUE AND manager_company_id = :mc
+            LIMIT 1
+        ");
+        $stmt->execute(['id' => $communityId, 'mc' => $managerCompanyId]);
+        if (!(int) $stmt->fetchColumn()) {
+            $this->flash('Comunidad no disponible.', 'danger', 'Error');
+            header('Location: ' . $this->areaBaseUrl() . '/comunidades');
+            exit;
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT 1 FROM community_technician
+            WHERE community_id = :cid AND technician_id = :tid
+            LIMIT 1
+        ");
+        $stmt->execute(['cid' => $communityId, 'tid' => $techId]);
+        if (!(int) $stmt->fetchColumn()) {
+            $this->flash('No hay relación previa entre esta comunidad y el técnico.', 'warning', 'Aviso');
+            header('Location: ' . $returnTo);
+            exit;
+        }
+
+        $sentiment = trim((string) ($_POST['sentiment'] ?? 'neutral'));
+        $allowedSent = ['preferred', 'neutral', 'not_preferred'];
+        if (!in_array($sentiment, $allowedSent, true)) {
+            $sentiment = 'neutral';
+        }
+
+        $reasonCategory = trim((string) ($_POST['reason_category'] ?? ''));
+        $allowedReasons = ['', 'quality', 'deadlines', 'conduct', 'communication', 'other'];
+        if (!in_array($reasonCategory, $allowedReasons, true)) {
+            $reasonCategory = '';
+        }
+        $reasonCategory = $reasonCategory === '' ? null : $reasonCategory;
+
+        $comment = trim((string) ($_POST['comment'] ?? ''));
+        if (mb_strlen($comment) > 280) {
+            $comment = mb_substr($comment, 0, 280);
+        }
+        $comment = $comment === '' ? null : $comment;
+
+        $userId = (int) ($_SESSION['user']['id'] ?? 0);
+        if ($userId <= 0) {
+            $this->flash('Sesión no válida.', 'danger', 'Error');
+            header('Location: ' . $this->baseUrl() . '/login');
+            exit;
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT sentiment
+            FROM community_technician_feedback
+            WHERE community_id = :cid AND technician_id = :tid
+            LIMIT 1
+        ");
+        $stmt->execute(['cid' => $communityId, 'tid' => $techId]);
+        $previousSentiment = (string) ($stmt->fetchColumn() ?: '');
+
+        $stmt = $pdo->prepare("
+            INSERT INTO community_technician_feedback
+                (community_id, technician_id, sentiment, reason_category, comment, rated_by_user_id, rated_at, updated_at)
+            VALUES
+                (:cid, :tid, :sent, :rc, :co, :uid, NOW(), NOW())
+            ON CONFLICT (community_id, technician_id) DO UPDATE SET
+                sentiment = EXCLUDED.sentiment,
+                reason_category = EXCLUDED.reason_category,
+                comment = EXCLUDED.comment,
+                rated_by_user_id = EXCLUDED.rated_by_user_id,
+                rated_at = NOW(),
+                updated_at = NOW()
+        ");
+        $stmt->execute([
+            'cid' => $communityId,
+            'tid' => $techId,
+            'sent' => $sentiment,
+            'rc' => $reasonCategory,
+            'co' => $comment,
+            'uid' => $userId,
+        ]);
+
+        if ($sentiment === 'not_preferred' && $previousSentiment !== 'not_preferred') {
+            $stmt = $pdo->prepare("SELECT name FROM communities WHERE id = :id LIMIT 1");
+            $stmt->execute(['id' => $communityId]);
+            $communityName = (string) ($stmt->fetchColumn() ?: 'Comunidad');
+
+            $stmt = $pdo->prepare("
+                SELECT display_name AS full_name
+                FROM technicians WHERE id = :id LIMIT 1
+            ");
+            $stmt->execute(['id' => $techId]);
+            $techName = trim((string) ($stmt->fetchColumn() ?: 'Técnico'));
+
+            $this->notifyAdminsTechnicianNotPreferred(
+                $pdo,
+                $communityId,
+                $communityName,
+                $techId,
+                $techName !== '' ? $techName : 'Técnico',
+                $reasonCategory,
+                $comment
+            );
+        }
+
+        $this->flash('Valoración guardada.', 'success', 'Correcto');
+        header('Location: ' . $returnTo);
+        exit;
+    }
+
+    private function feedbackReasonCategoryLabel(?string $category): string
+    {
+        return match ($category) {
+            'quality' => 'calidad del trabajo',
+            'deadlines' => 'plazos',
+            'conduct' => 'trato / conducta',
+            'communication' => 'comunicación',
+            'other' => 'otro motivo',
+            default => '',
+        };
+    }
+
+    private function notifyAdminsTechnicianNotPreferred(
+        PDO $pdo,
+        int $communityId,
+        string $communityName,
+        int $techId,
+        string $techName,
+        ?string $reasonCategory,
+        ?string $comment
+    ): void {
+        $reasonText = $this->feedbackReasonCategoryLabel($reasonCategory);
+        $message = 'La comunidad «' . $communityName . '» no está satisfecha con el técnico «' . $techName . '»';
+        if ($reasonText !== '') {
+            $message .= ' por ' . $reasonText;
+        }
+        $message .= '.';
+        if ($comment !== null && trim($comment) !== '') {
+            $message .= ' Comentario: «' . trim($comment) . '».';
+        }
+
+        $adminIds = $pdo
+            ->query("SELECT id FROM users WHERE role = 'admin' AND is_active = TRUE")
+            ->fetchAll(PDO::FETCH_COLUMN);
+
+        foreach ($adminIds as $adminId) {
+            $this->createNotification(
+                (int) $adminId,
+                'community_tech_not_preferred',
+                'Técnico no recomendado por la comunidad',
+                $message,
+                [
+                    'community_id' => $communityId,
+                    'technician_id' => $techId,
+                ]
+            );
+        }
+    }
+
+        /**
+     * Versión de sincronización para pestaña Técnicos (valoraciones + asignaciones).
+     */
+    private function communityTechSyncVersion(PDO $pdo, int $communityId): string
+    {
+        $stmt = $pdo->prepare("
+            SELECT GREATEST(
+                COALESCE(
+                    (SELECT MAX(updated_at) FROM community_technician_feedback WHERE community_id = :id),
+                    TIMESTAMPTZ '1970-01-01 00:00:00+00'
+                ),
+                COALESCE(
+                    (SELECT MAX(updated_at) FROM community_technician WHERE community_id = :id),
+                    TIMESTAMPTZ '1970-01-01 00:00:00+00'
+                )
+            )::text AS v
+        ");
+        $stmt->execute(['id' => $communityId]);
+
+        return (string) ($stmt->fetchColumn() ?: '0');
+    }
+
+    /** GET JSON: versión actual para polling en ficha comunidad (admin). */
+    /** @param array<string, string> $params */
+    public function syncState(array $params = []): void
+    {
+        $this->assertAreaAccess();
+        $this->requireAdmin();
+
+        $communityId = (int) ($params['id'] ?? 0);
+        if ($communityId <= 0) {
+            http_response_code(400);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['error' => 'invalid'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        $pdo = Database::connection();
+
+        $stmt = $pdo->prepare("
+            SELECT id FROM communities
+            WHERE id = :id AND is_active = TRUE
+            LIMIT 1
+        ");
+        $stmt->execute(['id' => $communityId]);
+        if (!(int) $stmt->fetchColumn()) {
+            http_response_code(404);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['error' => 'not_found'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-store');
+        echo json_encode([
+            'community_id' => $communityId,
+            'tech_sync_version' => $this->communityTechSyncVersion($pdo, $communityId),
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
     }
 
     private function requireAdmin(): void

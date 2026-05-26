@@ -4,7 +4,10 @@ use App\Services\DocumentIntakePresentationService;
 
 $ab = htmlspecialchars($areaBaseUrl ?? '/cae-inpro/public/gestor');
 $t = $tech ?? [];
-$name = trim(((string) ($t['first_name'] ?? '')) . ' ' . ((string) ($t['last_name'] ?? '')));
+$name = trim((string) ($t['display_name'] ?? ''));
+$entityType = (string) ($t['entity_type'] ?? 'individual');
+$entityLabel = $entityType === 'company' ? 'Empresa' : 'Persona física / autónomo';
+$taxLabel = $entityType === 'company' ? 'CIF' : 'NIF / DNI / NIE';
 $current = $currentCae ?? null;
 $history = $caeHistory ?? [];
 $docs = $caeDocuments ?? [];
@@ -49,6 +52,7 @@ $statusBadge = static function (string $status): string {
     <div class="page-header-left">
         <h1 class="h3 page-title mb-1"><?= htmlspecialchars($name !== '' ? $name : 'Técnico') ?></h1>
         <p class="page-meta mb-0">
+            <span class="badge text-bg-light text-dark border me-1"><?= htmlspecialchars($entityLabel) ?></span>
             <?= htmlspecialchars((string) ($t['professions'] ?? '-')) ?> ·
             <?= htmlspecialchars((string) ($t['city'] ?? '-')) ?> ·
             <?php if ($current): ?>
@@ -93,7 +97,8 @@ $statusBadge = static function (string $status): string {
                         <dl class="row mb-0 small">
                             <dt class="col-sm-4 text-muted">Email</dt><dd class="col-sm-8"><?= htmlspecialchars((string) ($t['email'] ?? '-')) ?></dd>
                             <dt class="col-sm-4 text-muted">Teléfono</dt><dd class="col-sm-8"><?= htmlspecialchars((string) ($t['phone'] ?? '-')) ?></dd>
-                            <dt class="col-sm-4 text-muted">DNI/NIE</dt><dd class="col-sm-8"><?= htmlspecialchars((string) ($t['dni_nie'] ?? '-')) ?></dd>
+                            <dt class="col-sm-4 text-muted"><?= htmlspecialchars($taxLabel) ?></dt><dd class="col-sm-8"><code><?= htmlspecialchars((string) ($t['tax_id'] ?? '-')) ?></code></dd>
+                            <dt class="col-sm-4 text-muted">Tipo</dt><dd class="col-sm-8"><?= htmlspecialchars($entityLabel) ?></dd>
                         </dl>
                     </div>
                 </div>
@@ -120,7 +125,7 @@ $statusBadge = static function (string $status): string {
                 <tbody>
                 <?php foreach ($history as $row): ?>
                     <tr class="<?= !empty($row['is_current']) ? 'cae-row-current' : '' ?>">
-                        <td data-label="Periodo"><?= htmlspecialchars((string) ($row['valid_from'] ?? '-')) ?> — <?= htmlspecialchars((string) ($row['valid_until'] ?? '-')) ?></td>
+                        <td data-label="Periodo"><?= app_date_range_html($row['valid_from'] ?? null, $row['valid_until'] ?? null) ?></td>
                         <td data-label="Estado">
                             <?php $st = (string) ($row['status'] ?? ''); ?>
                             <span class="badge <?= $statusBadge($st) ?>"><?= htmlspecialchars($statusLabel($st)) ?></span>
@@ -205,7 +210,7 @@ $statusBadge = static function (string $status): string {
                 <div class="subpanel-b">
                     <p class="doc-panel-intro mb-3">
                         Estos archivos no se han validado automáticamente. Indica la <strong>fecha de caducidad</strong> y aprueba para publicarlos.
-                        El estado <strong>Válido para CAE</strong> aparecerá en la tabla inferior.
+                        El estado <strong>Válido</strong> / <strong>No válido</strong> aparecerá en la tabla inferior.
                     </p>
                     <div class="table-responsive">
                         <table class="table table-sm align-middle mb-0 table-mobile-cards doc-table">
@@ -283,22 +288,33 @@ $statusBadge = static function (string $status): string {
             <div class="subpanel-b">
                 <div class="table-responsive">
                     <table class="table table-sm align-middle mb-0 table-mobile-cards doc-table">
-                    <thead><tr><th>Documento</th><th>Archivo</th><th>Validez CAE</th><th>Detalles</th><th></th></tr></thead>
+                    <thead><tr><th>Documento</th><th>Archivo</th><th>Validez</th><th>Detalles</th><th></th></tr></thead>
                         <tbody>
                 <?php foreach ($docs as $d): ?>
                     <?php
                         $v = $d['cae_validity'] ?? null;
                         $ok = is_array($v) && !empty($v['valid_for_cae']);
-                        $label = is_array($v) ? (string) ($v['label'] ?? ($ok ? 'Válido para CAE' : 'No válido para CAE')) : '—';
-                        $badgeClass = $ok ? 'text-bg-success' : 'text-bg-danger';
+                        $docTypeName = trim((string) ($d['document_name'] ?? ''));
+                        $isPrlOptional = $docTypeName === \App\Services\CaeReadinessService::DOCUMENT_TYPE_NAME_PRL;
+                        $label = is_array($v) ? (string) ($v['label'] ?? ($ok ? 'Válido' : 'No válido')) : '—';
+                        if ($isPrlOptional) {
+                            $badgeClass = $ok ? 'text-bg-success' : 'text-bg-light text-dark border';
+                        } else {
+                            $badgeClass = $ok ? 'text-bg-success' : 'text-bg-danger';
+                        }
                         $expRaw = trim((string) ($d['expires_at'] ?? ''));
                         $reasonPrimary = \App\Services\DocumentIntakePresentationService::validityPrimaryReason(is_array($v) ? $v : null);
                         $reasonSecondary = \App\Services\DocumentIntakePresentationService::validitySecondaryLine(is_array($v) ? $v : null, $expRaw !== '' ? $expRaw : null);
                     ?>
                     <tr>
-                        <td data-label="Documento" class="doc-table-type"><?= htmlspecialchars((string) ($d['document_name'] ?? '-')) ?></td>
+                        <td data-label="Documento" class="doc-table-type">
+                            <?= htmlspecialchars((string) ($d['document_name'] ?? '-')) ?>
+                            <?php if ($isPrlOptional): ?>
+                                <span class="badge rounded-pill badge-doc-optional ms-1" title="No es obligatorio para generar el CAE con IA">Opcional</span>
+                            <?php endif; ?>
+                        </td>
                         <td data-label="Archivo"><span class="doc-table-filename"><?= htmlspecialchars((string) ($d['original_filename'] ?? '-')) ?></span></td>
-                        <td data-label="Validez CAE">
+                        <td data-label="Validez">
                             <span class="badge <?= htmlspecialchars($badgeClass, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></span>
                         </td>
                         <td data-label="Motivo" class="doc-table-reason">

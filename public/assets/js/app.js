@@ -293,36 +293,129 @@
   });
 })();
 
-// ── Polling de notificaciones ────────────────────────────────────────────────
+// ── Polling de notificaciones + recarga contextual (comunidad / RL / técnicos) ─
 (function () {
-  const btn  = document.querySelector('.app-notif-btn');
+  const btn = document.querySelector('.app-notif-btn');
   if (!btn) return;
 
-  const base     = document.querySelector('meta[name="app-base-url"]')?.content ?? '';
-  const area     = window.location.pathname.includes('/admin/') ? 'admin' : 'gestor';
+  const base = document.querySelector('meta[name="app-base-url"]')?.content ?? '';
+  const area = window.location.pathname.includes('/admin/') ? 'admin' : 'gestor';
   const endpoint = base + '/' + area + '/notificaciones/poll';
+  const POLL_MS = area === 'admin' ? 15_000 : 30_000;
 
-  // Contador inicial renderizado por PHP
-  const badgeEl  = () => document.querySelector('.app-notif-badge');
-  let lastUnread = badgeEl() ? parseInt(badgeEl().textContent.trim(), 10) : 0;
+  const ADMIN_COMMUNITY_OPEN_TYPES = [
+    'rl_request_created',
+    'rl_report_uploaded_by_gestor',
+    'community_tech_not_preferred',
+  ];
+  const ADMIN_TECH_OPEN_TYPES = [
+    'technician_association_requested',
+    'technician_created_by_gestor',
+  ];
+  const GESTOR_OPEN_TYPES = [
+    'technician_association_approved',
+    'technician_association_rejected',
+  ];
+
+  function notificationOpenUrl(n) {
+    const type = n.type ?? '';
+    const id = n.id ?? 0;
+    const payload = n.payload ?? {};
+    if (id <= 0) return null;
+
+    if (area === 'admin') {
+      if (ADMIN_TECH_OPEN_TYPES.includes(type)) {
+        return base + '/admin/notificaciones/' + id + '/open';
+      }
+      const cid = payload.community_id ?? 0;
+      if (cid > 0 && ADMIN_COMMUNITY_OPEN_TYPES.includes(type)) {
+        return base + '/admin/notificaciones/' + id + '/open';
+      }
+    }
+
+    if (area === 'gestor' && GESTOR_OPEN_TYPES.includes(type)) {
+      return base + '/gestor/notificaciones/' + id + '/open';
+    }
+
+    return null;
+  }
+
+  const badgeEl = () => document.querySelector('.app-notif-badge');
+  let lastUnread = badgeEl() ? parseInt(badgeEl().textContent.trim(), 10) || 0 : 0;
+  let lastReloadAt = 0;
+
+  function currentCommunityIdFromPath() {
+    const m = window.location.pathname.match(/\/comunidades\/(\d+)/);
+    return m ? parseInt(m[1], 10) : 0;
+  }
+
+  function hasOpenModal() {
+    return document.querySelector('.modal.show') !== null;
+  }
+
+  function schedulePageReload(reason) {
+    const now = Date.now();
+    if (now - lastReloadAt < 5000) return;
+    lastReloadAt = now;
+
+    const run = () => {
+      if (hasOpenModal()) {
+        window.setTimeout(run, 1500);
+        return;
+      }
+      window.location.reload();
+    };
+
+    run();
+  }
+
+  function shouldReloadForNotification(n) {
+    if (area !== 'admin' || !n) return false;
+
+    const type = n.type ?? '';
+
+    if (
+      type === 'technician_association_requested' &&
+      /\/admin\/tecnicos\/solicitudes/.test(window.location.pathname)
+    ) {
+      return true;
+    }
+
+    const payloadCid = n.payload?.community_id ?? 0;
+    const pageCid = currentCommunityIdFromPath();
+    if (payloadCid <= 0 || pageCid <= 0 || payloadCid !== pageCid) return false;
+
+    const hash = window.location.hash;
+
+    if (type === 'rl_request_created' || type === 'rl_report_uploaded_by_gestor') {
+      return hash === '#c-rl';
+    }
+
+    if (type === 'community_tech_not_preferred') {
+      return hash === '#c-tech';
+    }
+
+    return false;
+  }
 
   function updateBadge(count) {
     let badge = badgeEl();
     if (count > 0) {
       if (!badge) {
         badge = document.createElement('span');
-        badge.className = 'position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger app-notif-badge';
+        badge.className =
+          'position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger app-notif-badge';
         badge.style.fontSize = '0.6rem';
         btn.appendChild(badge);
       }
       badge.textContent = count > 99 ? '99+' : count;
       badge.style.display = '';
-    } else {
-      if (badge) badge.style.display = 'none';
+    } else if (badge) {
+      badge.style.display = 'none';
     }
   }
 
-  function updateDropdown(items, viewAllUrl) {
+  function updateDropdown(items) {
     const list = document.querySelector('.app-notif-list');
     if (!list) return;
 
@@ -331,40 +424,37 @@
       return;
     }
 
-    const base = document.querySelector('meta[name="app-base-url"]')?.content ?? '';
-    const area = window.location.pathname.includes('/admin/') ? 'admin' : 'gestor';
+    list.innerHTML = items
+      .map((n) => {
+        const openUrl = notificationOpenUrl(n);
+        const isClickable = openUrl !== null;
 
-    list.innerHTML = items.map(n => {
-      // Solo admin + rl_request_created → enlace que marca como leída y redirige al #c-rl
-      const isClickable = area === 'admin' &&
-                          n.type === 'rl_request_created' &&
-                          (n.payload?.community_id ?? 0) > 0;
-
-      const openUrl = isClickable
-        ? base + '/admin/notificaciones/' + n.id + '/open'
-        : null;
-
-      const readClass = n.is_read ? 'text-muted' : 'fw-semibold';
-      const inner = `
+        const readClass = n.is_read ? 'text-muted' : 'fw-semibold';
+        const inner = `
         <div class="${readClass}" style="${isClickable ? 'cursor:pointer;' : ''}">
           <div>${escapeHtml(n.title)}</div>
           <div class="fw-normal text-truncate">${escapeHtml(n.message)}</div>
           <div class="text-muted" style="font-size:0.7rem;">${n.created_fmt}</div>
         </div>`;
 
-      return openUrl
-        ? `<a href="${openUrl}" class="px-2 py-2 small border-bottom d-block text-decoration-none text-reset">${inner}</a>`
-        : `<div class="px-2 py-2 small border-bottom">${inner}</div>`;
-    }).join('');
+        return openUrl
+          ? `<a href="${openUrl}" class="px-2 py-2 small border-bottom d-block text-decoration-none text-reset">${inner}</a>`
+          : `<div class="px-2 py-2 small border-bottom">${inner}</div>`;
+      })
+      .join('');
   }
 
   function escapeHtml(str) {
     return String(str)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
   function showNotifToast(title, message, opts = {}) {
+    if (!window.bootstrap) return;
+
     let stack = document.querySelector('.toast-stack');
     if (!stack) {
       stack = document.createElement('div');
@@ -372,23 +462,31 @@
       document.body.appendChild(stack);
     }
 
-    const base = document.querySelector('meta[name="app-base-url"]')?.content ?? '';
-    const area = window.location.pathname.includes('/admin/') ? 'admin' : 'gestor';
+    const communityId = opts.payload?.community_id ?? 0;
+    const type = opts.type ?? '';
+    const notifId = opts.id ?? 0;
 
-    // Construir URL contextual según tipo y payload
-    let actionUrl  = base + '/' + area + '/notificaciones'; // destino por defecto
+    let actionUrl = base + '/' + area + '/notificaciones';
     let actionText = 'Ver todas las notificaciones →';
 
-    const communityId = opts.payload?.community_id ?? 0;
-    const type        = opts.type ?? '';
-    const notifId     = opts.id ?? 0;
-
-    // Admin + solicitud RL → endpoint /open: marca como leída y fuerza recarga completa
-    // aunque ya estés en la misma comunidad (server-side redirect = full reload).
-    // El gestor siempre ve el enlace a su pantalla de notificaciones.
-    if (area === 'admin' && communityId > 0 && type === 'rl_request_created' && notifId > 0) {
-      actionUrl  = base + '/admin/notificaciones/' + notifId + '/open';
-      actionText = 'Ver solicitud en la comunidad →';
+    const openUrl = notificationOpenUrl({ type, id: notifId, payload: opts.payload ?? {} });
+    if (openUrl) {
+      actionUrl = openUrl;
+      if (type === 'technician_association_requested') {
+        actionText = 'Ver solicitudes de asociación →';
+      } else if (type === 'technician_created_by_gestor') {
+        actionText = 'Ver ficha del técnico →';
+      } else if (type === 'technician_association_approved') {
+        actionText = 'Ver técnico en tu cartera →';
+      } else if (type === 'technician_association_rejected') {
+        actionText = 'Vincular otro técnico →';
+      } else if (type === 'community_tech_not_preferred') {
+        actionText = 'Ver técnicos de la comunidad →';
+      } else if (type === 'rl_report_uploaded_by_gestor') {
+        actionText = 'Ver informe RL en la comunidad →';
+      } else {
+        actionText = 'Ver solicitud en la comunidad →';
+      }
     }
 
     const toast = document.createElement('div');
@@ -413,13 +511,15 @@
     `;
     stack.appendChild(toast);
 
-    new bootstrap.Toast(toast, { delay: 6000 }).show();
+    bootstrap.Toast.getOrCreateInstance(toast, { delay: 6000 }).show();
     toast.addEventListener('hidden.bs.toast', () => toast.remove());
   }
 
   async function poll() {
+    if (document.visibilityState === 'hidden') return;
+
     try {
-      const res  = await fetch(endpoint, { credentials: 'same-origin', cache: 'no-store' });
+      const res = await fetch(endpoint, { credentials: 'same-origin', cache: 'no-store' });
       if (!res.ok) return;
       const data = await res.json();
 
@@ -427,26 +527,23 @@
 
       if (newUnread > lastUnread) {
         btn.classList.add('app-notif-pulse');
-        setTimeout(() => btn.classList.remove('app-notif-pulse'), 1000);
+        window.setTimeout(() => btn.classList.remove('app-notif-pulse'), 1000);
 
         const newest = data.items?.[0];
 
-        // ── Auto-recarga si el admin está en la pestaña #c-rl de una comunidad
-        const isRlRequest = (newest?.type ?? '') === 'rl_request_created';
-        const onRlTab     = window.location.hash === '#c-rl' &&
-                            /\/comunidades\/\d+/.test(window.location.pathname);
-
-        if (isRlRequest && onRlTab) {
-          // FIX: reload() en lugar de replace() — replace con hash no recarga la página
-          window.location.reload();
+        if (shouldReloadForNotification(newest)) {
+          schedulePageReload(newest.type);
           return;
         }
 
-        // Toast con URL contextual (pasa payload e id para construir enlace correcto)
+        if (area === 'admin' && newest?.type === 'technician_association_requested') {
+          document.dispatchEvent(new CustomEvent('assoc-request-poll-now'));
+        }
+
         if (newest && !newest.is_read) {
           showNotifToast(newest.title, newest.message, {
-            id:      newest.id      ?? 0,
-            type:    newest.type    ?? '',
+            id: newest.id ?? 0,
+            type: newest.type ?? '',
             payload: newest.payload ?? null,
           });
         }
@@ -455,9 +552,196 @@
       lastUnread = newUnread;
       updateBadge(newUnread);
       updateDropdown(data.items ?? []);
-
-    } catch (_) { /* silencioso */ }
+    } catch (_) {
+      /* silencioso */
+    }
   }
 
-  setInterval(poll, 30_000); // cada 30 segundos
+  poll();
+  window.setInterval(poll, POLL_MS);
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') poll();
+  });
+})();
+
+
+// ── Sync pestaña Técnicos: recarga ante cualquier cambio de valoración/asignación ─
+(function () {
+  const techPane = document.getElementById('c-tech');
+  if (!techPane) return;
+
+  const area = window.location.pathname.includes('/admin/') ? 'admin' : 'gestor';
+  if (area !== 'admin') return;
+
+  const communityId = techPane.dataset.communityId || '';
+  let lastVersion = techPane.dataset.techSyncVersion || '';
+  if (!communityId || !lastVersion) return;
+
+  const base = document.querySelector('meta[name="app-base-url"]')?.content ?? '';
+  const syncUrl = base + '/admin/comunidades/' + communityId + '/sync';
+  const POLL_MS = 15_000;
+  let lastReloadAt = 0;
+
+  function hasOpenModal() {
+    return document.querySelector('.modal.show') !== null;
+  }
+
+  function schedulePageReload() {
+    const now = Date.now();
+    if (now - lastReloadAt < 5000) return;
+    lastReloadAt = now;
+
+    const run = () => {
+      if (hasOpenModal()) {
+        window.setTimeout(run, 1500);
+        return;
+      }
+      window.location.reload();
+    };
+
+    run();
+  }
+
+  function isOnTechTab() {
+    return window.location.hash === '#c-tech' || window.location.hash === '';
+  }
+
+  async function pollTechSync() {
+    if (document.visibilityState === 'hidden') return;
+    if (window.location.hash !== '#c-tech') return;
+
+    try {
+      const res = await fetch(syncUrl, { credentials: 'same-origin', cache: 'no-store' });
+      if (!res.ok) return;
+
+      const data = await res.json();
+      const remoteVersion = String(data.tech_sync_version ?? '');
+
+      if (remoteVersion && lastVersion && remoteVersion !== lastVersion) {
+        schedulePageReload();
+        return;
+      }
+    } catch (_) {
+      /* silencioso */
+    }
+  }
+
+  pollTechSync();
+  window.setInterval(pollTechSync, POLL_MS);
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') pollTechSync();
+  });
+
+  document.querySelectorAll('[data-bs-toggle="tab"]').forEach((tabEl) => {
+    tabEl.addEventListener('shown.bs.tab', (event) => {
+      const target = event.target.getAttribute('data-bs-target');
+      if (target === '#c-tech') pollTechSync();
+    });
+  });
+})();
+
+// ── Sync solicitudes de asociación (admin: listado técnicos + pantalla solicitudes) ─
+(function () {
+  const base = document.querySelector('meta[name="app-base-url"]')?.content ?? '';
+  if (!window.location.pathname.includes('/admin/tecnicos')) return;
+
+  const syncUrl = base + '/admin/tecnicos/association-sync';
+  const POLL_MS = 15_000;
+
+  const solicitudesRoot = document.getElementById('admin-tecnicos-solicitudes');
+  const listRoot = document.getElementById('admin-tecnicos-list');
+  const isSolicitudesPage = /\/admin\/tecnicos\/solicitudes/.test(window.location.pathname);
+  const isListPage = /\/admin\/tecnicos\/?$/.test(window.location.pathname);
+
+  const initialPendingRaw = parseInt(
+    solicitudesRoot?.dataset.assocPendingCount ??
+      listRoot?.dataset.assocPendingCount ??
+      '-1',
+    10
+  );
+  let lastListVersion = solicitudesRoot?.dataset.assocListVersion ?? '';
+  let lastPending = initialPendingRaw >= 0 ? initialPendingRaw : -1;
+  let lastReloadAt = 0;
+
+  function hasOpenModal() {
+    return document.querySelector('.modal.show') !== null;
+  }
+
+  function updatePendingBadges(count) {
+    document.querySelectorAll('[data-assoc-pending-badge]').forEach((el) => {
+      if (count > 0) {
+        el.textContent = count > 99 ? '99+' : String(count);
+        el.classList.remove('is-hidden');
+      } else {
+        el.textContent = '';
+        el.classList.add('is-hidden');
+      }
+    });
+
+    const btn = document.getElementById('admin-assoc-requests-btn');
+    if (btn) {
+      btn.classList.toggle('has-pending', count > 0);
+    }
+  }
+
+  function scheduleSolicitudesReload() {
+    if (!isSolicitudesPage) return;
+    const now = Date.now();
+    if (now - lastReloadAt < 5000) return;
+    lastReloadAt = now;
+
+    const run = () => {
+      if (hasOpenModal()) {
+        window.setTimeout(run, 1500);
+        return;
+      }
+      window.location.reload();
+    };
+    run();
+  }
+
+  async function pollAssocSync() {
+    if (document.visibilityState === 'hidden') return;
+    if (!isListPage && !isSolicitudesPage) return;
+
+    try {
+      const res = await fetch(syncUrl, { credentials: 'same-origin', cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+
+      const pending = parseInt(data.pending_count ?? 0, 10) || 0;
+      const listVersion = String(data.list_version ?? '');
+
+      if (pending !== lastPending) {
+        if (lastPending >= 0 && pending > lastPending) {
+          const assocBtn = document.getElementById('admin-assoc-requests-btn');
+          assocBtn?.classList.add('app-notif-pulse');
+          window.setTimeout(() => assocBtn?.classList.remove('app-notif-pulse'), 1200);
+        }
+        lastPending = pending;
+        updatePendingBadges(pending);
+      }
+
+      if (isSolicitudesPage && listVersion && lastListVersion && listVersion !== lastListVersion) {
+        scheduleSolicitudesReload();
+        return;
+      }
+      if (isSolicitudesPage && listVersion) {
+        lastListVersion = listVersion;
+      }
+    } catch (_) {
+      /* silencioso */
+    }
+  }
+
+  pollAssocSync();
+  window.setInterval(pollAssocSync, POLL_MS);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') pollAssocSync();
+  });
+
+  // Refresco inmediato al llegar notificación de nueva solicitud (sin esperar 15s)
+  document.addEventListener('assoc-request-poll-now', () => pollAssocSync());
 })();

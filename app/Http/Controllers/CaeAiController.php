@@ -316,7 +316,7 @@ final class CaeAiController extends Controller
         [$flashMsg, $flashType] = match ($caeStatus) {
             'approved'     => ['CAE generado con IA y aprobado correctamente.', 'success'],
             'in_review'    => ['CAE guardado. Estado: En revisión — requiere validación.', 'warning'],
-            'pending_docs' => ['CAE guardado. Faltan o no cumplen la documentación complementaria obligatoria (Hacienda, Seguridad Social, Póliza de Responsabilidad Civil, Prevención de riesgos laborales).', 'warning'],
+            'pending_docs' => ['CAE guardado. Faltan o no cumplen la documentación obligatoria para generar (Hacienda, Seguridad Social y Póliza de Responsabilidad Civil).', 'warning'],
             default        => ['CAE guardado como Rechazado según el análisis de la IA.', 'danger'],
         };
         $this->flash($flashMsg, $flashType, $caeStatus === 'approved' ? 'Correcto' : 'Atención');
@@ -368,7 +368,7 @@ final class CaeAiController extends Controller
         if ($tid <= 0) return null;
 
         $stmt = $pdo->prepare("
-            SELECT id, first_name, last_name, email, professions
+            SELECT id, display_name, email, professions
             FROM technicians
             WHERE id = :id AND is_active = TRUE
             LIMIT 1
@@ -377,7 +377,7 @@ final class CaeAiController extends Controller
         $r = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$r) return null;
 
-        $r['full_name'] = trim((string) $r['first_name'] . ' ' . (string) $r['last_name']);
+        $r['full_name'] = trim((string) ($r['display_name'] ?? ''));
         return $r;
     }
 

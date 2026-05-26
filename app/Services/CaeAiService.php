@@ -15,11 +15,11 @@ final class CaeAiService
     public static function determineStatus(array $sources): array
     {
         // CaeAiController ya exige CaeReadinessService antes de llamar aquí.
-        // Solo alineamos el estado del PDF con los cuatro tipos canónicos (sin heurísticas de texto).
+        // Solo alineamos el estado del PDF con los tres tipos obligatorios para generar (sin heurísticas de texto).
         if ($sources === []) {
             return [
                 'status'   => 'pending_docs',
-                'missing'  => CaeReadinessService::REQUIRED_SUPPORTING_DOC_NAMES,
+                'missing'  => CaeReadinessService::REQUIRED_FOR_CAE_GENERATION,
                 'reason'   => 'No hay documentos complementarios cargados.',
                 'has_text' => false,
             ];
@@ -34,7 +34,7 @@ final class CaeAiService
         }
 
         $missing = [];
-        foreach (CaeReadinessService::REQUIRED_SUPPORTING_DOC_NAMES as $req) {
+        foreach (CaeReadinessService::REQUIRED_FOR_CAE_GENERATION as $req) {
             if (!isset($present[$req])) {
                 $missing[] = $req;
             }
@@ -234,7 +234,7 @@ Tono: formal, técnico, en tercera persona.";
         $obs = match($status) {
             'approved'     => [
                 'Toda la documentación requerida ha sido verificada correctamente.',
-                'La documentación de Responsabilidad Civil y Prevención de Riesgos está presente y es legible.',
+                'La documentación de Hacienda, Seguridad Social y Responsabilidad Civil está presente y es legible.',
                 'El certificado CAE puede ser emitido sin observaciones.',
             ],
             'in_review'    => [

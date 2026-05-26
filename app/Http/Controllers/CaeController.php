@@ -54,7 +54,7 @@ final class CaeController extends Controller
         }
 
         $stmt = $pdo->prepare("
-            SELECT id, first_name, last_name, professions, city, email
+            SELECT id, entity_type, tax_id, display_name, professions, city, email
             FROM technicians
             WHERE id = :id
             AND is_active = TRUE
@@ -251,7 +251,7 @@ final class CaeController extends Controller
 
         // Técnico
         $stmt = $pdo->prepare("
-            SELECT id, first_name, last_name, email
+            SELECT id, display_name, email
             FROM technicians
             WHERE id = :id AND is_active = TRUE
             LIMIT 1
@@ -325,7 +325,7 @@ final class CaeController extends Controller
         $currentCaeId = (int) ($stmt->fetchColumn() ?: 0);
 
         $adminName    = (string) ($_SESSION['user']['full_name'] ?? 'Administrador');
-        $techName     = trim(((string) ($tech['first_name'] ?? '')) . ' ' . ((string) ($tech['last_name'] ?? '')));
+        $techName     = trim((string) ($tech['display_name'] ?? ''));
         $uploadToken  = bin2hex(random_bytes(32));
         $tokenExpires = date('Y-m-d H:i:s', strtotime('+7 days'));
         $portalUrl    = $this->baseUrl() . '/portal/' . $uploadToken;
@@ -1408,7 +1408,7 @@ final class CaeController extends Controller
     }
 
     /**
-     * Toast coherente: publicar ≠ "válido para CAE" hasta cumplir vigencia + AEAT (Hacienda).
+     * Toast coherente: publicar ≠ "válido" hasta cumplir vigencia + AEAT (Hacienda).
      */
     private function flashSupportingPublishedValidity(PDO $pdo, int $caeDocumentId, string $introLine): void
     {
@@ -1425,9 +1425,9 @@ final class CaeController extends Controller
 
         if ($valid) {
             $this->flash(
-                $reason !== '' ? $reason : 'El documento cumple los requisitos para generar el CAE con IA.',
+                $reason !== '' ? $reason : 'El documento cumple los requisitos para generar.',
                 'success',
-                'Válido para CAE'
+                'Válido'
             );
             return;
         }

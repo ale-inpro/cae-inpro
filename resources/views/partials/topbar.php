@@ -86,8 +86,20 @@ if ($currentUserId > 0) {
                             $nPayload  = json_decode((string) ($n['payload_json'] ?? '{}'), true) ?? [];
                             $nCommId   = (int) ($nPayload['community_id'] ?? 0);
                             $nType     = (string) ($n['type'] ?? '');
-                            $isClickable = ($role === 'admin' && $nType === 'rl_request_created' && $nCommId > 0);
-                            $openUrl   = $isClickable ? $bu . '/admin/notificaciones/' . (int)$n['id'] . '/open' : null;
+                            $nId       = (int) ($n['id'] ?? 0);
+                            $adminTechTypes = ['technician_association_requested', 'technician_created_by_gestor'];
+                            $adminCommTypes = ['rl_request_created', 'rl_report_uploaded_by_gestor', 'community_tech_not_preferred'];
+                            $gestorTechTypes = ['technician_association_approved', 'technician_association_rejected'];
+                            $isClickable = $nId > 0 && (
+                                ($role === 'admin' && (
+                                    in_array($nType, $adminTechTypes, true)
+                                    || ($nCommId > 0 && in_array($nType, $adminCommTypes, true))
+                                ))
+                                || ($role === 'gestor' && in_array($nType, $gestorTechTypes, true))
+                            );
+                            $openUrl = $isClickable
+                                ? $bu . '/' . ($role === 'admin' ? 'admin' : 'gestor') . '/notificaciones/' . $nId . '/open'
+                                : null;
                             $nIsRead   = in_array($n['is_read'], [true, 't', '1'], true);
                             $readClass = $nIsRead ? 'text-muted' : 'fw-semibold';
                         ?>
@@ -99,7 +111,7 @@ if ($currentUserId > 0) {
                             <div class="<?= $readClass ?> mb-1"><?= htmlspecialchars((string) $n['title']) ?></div>
                             <div class="fw-normal"><?= htmlspecialchars((string) $n['message']) ?></div>
                             <div class="text-muted app-notif-time">
-                                <?= date('d/m H:i', strtotime((string) $n['created_at'])) ?>
+                                <?= app_datetime((string) ($n['created_at'] ?? '')) ?>
                             </div>
                         <?php if ($openUrl): ?></a><?php else: ?></div><?php endif; ?>
                     <?php endif; ?>

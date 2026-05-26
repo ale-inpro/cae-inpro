@@ -2,6 +2,7 @@
 $ab = htmlspecialchars($areaBaseUrl ?? '/cae-inpro/public/gestor');
 $role = (string) ($area ?? 'gestor');
 $items = $technicians ?? [];
+$pendingAssocCount = (int) ($pendingAssocCount ?? 0);
 $focus = (string) ($focus ?? '');
 $focusLabel = match ($focus) {
     'cae_pending'    => 'Filtro activo: CAE pendientes',
@@ -42,82 +43,113 @@ $label = static function (string $status): string {
     };
 };
 ?>
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <div>
-        <h2 class="h4 mb-1">Gestión de Técnicos</h2>
-        <p class="text-muted mb-0">Listado real de técnicos según tu rol.</p>
-    </div>
-    <?php if ($role === 'admin'): ?>
-        <a class="btn btn-success" href="<?= $ab ?>/tecnicos/create">Nuevo técnico</a>
-    <?php endif; ?>
-</div>
-
-<?php if ($role === 'admin'): ?>
-    <div class="filter-chips mb-3">
-        <a href="<?= $ab ?>/tecnicos?focus=all" class="filter-chip <?= $focus === '' ? 'active' : '' ?>">
-            <i class="bi bi-grid me-1"></i> Todos
-        </a>
-        <?php foreach ($focusOptions as $opt): ?>
-            <a href="<?= $ab ?>/tecnicos?focus=<?= urlencode($opt['key']) ?>" class="filter-chip <?= $focus === $opt['key'] ? 'active' : '' ?>">
-                <?= htmlspecialchars($opt['label']) ?>
+<div id="admin-tecnicos-list" data-admin-tecnicos-page="list" data-assoc-pending-count="<?= (int) $pendingAssocCount ?>">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="h4 mb-1">Gestión de Técnicos</h2>
+            <p class="text-muted mb-0">Listado real de técnicos según tu rol.</p>
+        </div>
+        <?php if ($role === 'admin'): ?>
+            <div class="d-flex gap-2">
+                <a
+                    href="<?= $ab ?>/tecnicos/solicitudes"
+                    class="btn btn-assoc-requests btn-sm <?= $pendingAssocCount > 0 ? 'has-pending' : '' ?>"
+                    id="admin-assoc-requests-btn"
+                    data-assoc-badge-root
+                >
+                    <i class="bi bi-inbox-fill" aria-hidden="true"></i>
+                    <span>Solicitudes</span>
+                    <span
+                        class="badge text-bg-danger btn-assoc-requests-badge js-assoc-pending-badge <?= $pendingAssocCount > 0 ? '' : 'is-hidden' ?>"
+                        data-assoc-pending-badge
+                    ><?= $pendingAssocCount > 0 ? (int) $pendingAssocCount : '' ?></span>
+                </a>
+                <a class="btn btn-success" href="<?= $ab ?>/tecnicos/create">Nuevo técnico</a>
+            </div>
+        <?php else: ?>
+            <a class="btn btn-success" href="<?= $ab ?>/tecnicos/vincular">
+                <i class="bi bi-person-plus me-1"></i>Vincular técnico
             </a>
-        <?php endforeach; ?>
+        <?php endif; ?>
     </div>
-<?php endif; ?>
 
-<?php if ($focusLabel !== ''): ?>
-    <div class="alert alert-info d-flex justify-content-between align-items-center py-2">
-        <span><i class="bi bi-funnel me-1"></i><?= htmlspecialchars($focusLabel) ?></span>
-        <a class="btn btn-sm btn-outline-secondary" href="<?= $ab ?>/tecnicos">Quitar filtro</a>
-    </div>
-<?php endif; ?>
-
-<div class="card border-0 shadow-sm">
-    <div class="card-body">
-        <table class="table table-hover align-middle mb-0 table-mobile-cards" data-datatable data-page-length="10" data-empty="No hay técnicos disponibles">
-            <thead>
-            <tr>
-                <th>Nombre</th>
-                <th>Categoría</th>
-                <th>Ciudad</th>
-                <th>Email</th>
-                <th>Estado CAE</th>
-                <th>Acciones</th>
-            </tr>
-            </thead>
-            <tbody>
-            <?php foreach ($items as $row): ?>
-                <?php
-                $id = (int) ($row['id'] ?? 0);
-                $name = trim(((string) ($row['first_name'] ?? '')) . ' ' . ((string) ($row['last_name'] ?? '')));
-                $status = (string) ($row['cae_status'] ?? 'pending_docs');
-                ?>
-                <tr>
-                    <td data-label="Nombre"><?= htmlspecialchars($name) ?></td>
-                    <td data-label="Categoría"><?= htmlspecialchars((string) ($row['professions'] ?? '-')) ?></td>
-                    <td data-label="Ciudad"><?= htmlspecialchars((string) ($row['city'] ?? '-')) ?></td>
-                    <td data-label="Email"><?= htmlspecialchars((string) ($row['email'] ?? '-')) ?></td>
-                    <td data-label="Estado CAE"><span class="badge <?= $badgeClass($status) ?>"><?= htmlspecialchars($label($status)) ?></span></td>
-                    <td data-label="Acciones" class="d-flex gap-1 actions-cell">
-                        <a href="<?= $ab ?>/tecnicos/<?= $id ?>" class="btn btn-sm btn-outline-secondary" title="Abrir ficha">
-                            <i class="bi bi-box-arrow-up-right"></i>
-                        </a>
-
-                        <?php if ($role === 'admin'): ?>
-                            <a href="<?= $ab ?>/tecnicos/<?= $id ?>/edit?return_to=<?= urlencode($ab . '/tecnicos/' . $id . '#pane-info') ?>" class="btn btn-sm btn-outline-success" title="Editar">
-                                <i class="bi bi-pencil-square"></i>
-                            </a>
-                            <form method="post" action="<?= $ab ?>/tecnicos/<?= $id ?>" data-confirm="¿Desactivar este técnico?">
-                                <input type="hidden" name="_method" value="DELETE">
-                                <button class="btn btn-sm btn-outline-danger" type="submit" title="Desactivar">
-                                    <i class="bi bi-person-x"></i>
-                                </button>
-                            </form>
-                        <?php endif; ?>
-                    </td>
-                </tr>
+    <?php if ($role === 'admin'): ?>
+        <div class="filter-chips mb-3">
+            <a href="<?= $ab ?>/tecnicos?focus=all" class="filter-chip <?= $focus === '' ? 'active' : '' ?>">
+                <i class="bi bi-grid me-1"></i> Todos
+            </a>
+            <?php foreach ($focusOptions as $opt): ?>
+                <a href="<?= $ab ?>/tecnicos?focus=<?= urlencode($opt['key']) ?>" class="filter-chip <?= $focus === $opt['key'] ? 'active' : '' ?>">
+                    <?= htmlspecialchars($opt['label']) ?>
+                </a>
             <?php endforeach; ?>
-            </tbody>
-        </table>
+        </div>
+    <?php endif; ?>
+
+    <?php if ($focusLabel !== ''): ?>
+        <div class="alert alert-info d-flex justify-content-between align-items-center py-2">
+            <span><i class="bi bi-funnel me-1"></i><?= htmlspecialchars($focusLabel) ?></span>
+            <a class="btn btn-sm btn-outline-secondary" href="<?= $ab ?>/tecnicos">Quitar filtro</a>
+        </div>
+    <?php endif; ?>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <table class="table table-hover align-middle mb-0 table-mobile-cards" data-datatable data-page-length="10" data-empty="No hay técnicos disponibles">
+                <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Tipo</th>
+                    <th>CIF / NIF</th>
+                    <th>Categoría</th>
+                    <th>Ciudad</th>
+                    <th>Email</th>
+                    <th>Estado CAE</th>
+                    <th class="text-end">Acciones</th>
+                </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($items as $row): ?>
+                    <?php
+                    $id = (int) ($row['id'] ?? 0);
+                    $name = trim((string) ($row['display_name'] ?? ''));
+                    $entityType = (string) ($row['entity_type'] ?? 'individual');
+                    $entityBadge = $entityType === 'company'
+                        ? '<span class="badge text-bg-primary">Empresa</span>'
+                        : '<span class="badge text-bg-light text-dark border">Persona</span>';
+                    $status = (string) ($row['cae_status'] ?? 'pending_docs');
+                    ?>
+                    <tr>
+                        <td data-label="Nombre"><?= htmlspecialchars($name) ?></td>
+                        <td data-label="Tipo"><?= $entityBadge ?></td>
+                        <td data-label="CIF / NIF"><code class="small"><?= htmlspecialchars((string) ($row['tax_id'] ?? '-')) ?></code></td>
+                        <td data-label="Categoría"><?= htmlspecialchars((string) ($row['professions'] ?? '-')) ?></td>
+                        <td data-label="Ciudad"><?= htmlspecialchars((string) ($row['city'] ?? '-')) ?></td>
+                        <td data-label="Email"><?= htmlspecialchars((string) ($row['email'] ?? '-')) ?></td>
+                        <td data-label="Estado CAE"><span class="badge <?= $badgeClass($status) ?>"><?= htmlspecialchars($label($status)) ?></span></td>
+                        <td data-label="Acciones" class="text-end text-nowrap">
+                            <div class="table-actions actions-cell justify-content-end">
+                            <a href="<?= $ab ?>/tecnicos/<?= $id ?>" class="btn btn-sm btn-outline-secondary" title="Abrir ficha">
+                                <i class="bi bi-box-arrow-up-right"></i>
+                            </a>
+
+                            <?php if ($role === 'admin'): ?>
+                                <a href="<?= $ab ?>/tecnicos/<?= $id ?>/edit?return_to=<?= urlencode($ab . '/tecnicos/' . $id . '#pane-info') ?>" class="btn btn-sm btn-outline-success" title="Editar">
+                                    <i class="bi bi-pencil-square"></i>
+                                </a>
+                                <form method="post" action="<?= $ab ?>/tecnicos/<?= $id ?>" data-confirm="¿Desactivar este técnico?">
+                                    <input type="hidden" name="_method" value="DELETE">
+                                    <button class="btn btn-sm btn-outline-danger" type="submit" title="Desactivar">
+                                        <i class="bi bi-person-x"></i>
+                                    </button>
+                                </form>
+                            <?php endif; ?>
+                            </div>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>

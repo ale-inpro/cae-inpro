@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Support\DateDisplay;
 use PDO;
 
 /**
  * Un solo criterio de negocio para complementarios publicados (cae_documents):
- * "Válido para CAE" = vigencia por fecha + (si es Hacienda) cotejo AEAT.
+ * "Válido" / "No válido" = vigencia por fecha + (si es Hacienda) cotejo AEAT.
  * Alineado con CaeReadinessService por tipo.
  *
  * detail_lines: primero el motivo humano principal; la fecha de fin del documento va como contexto cuando aplica.
@@ -45,7 +46,7 @@ final class CaeDocumentValidityService
 
             return self::pack(
                 false,
-                'No válido para CAE',
+                'No válido',
                 $codes,
                 $messages,
                 [$msg]
@@ -59,33 +60,33 @@ final class CaeDocumentValidityService
             $msg = 'La fecha de caducidad del documento no es válida o no se reconoce.';
             $messages[] = $msg;
 
-            return self::pack(false, 'No válido para CAE', $codes, $messages, [$msg]);
+            return self::pack(false, 'No válido', $codes, $messages, [$msg]);
         }
 
-        $expStr = $exp->format('Y-m-d');
-        $vigenciaCtx = 'Vigencia del documento (fecha de fin indicada): ' . $expStr;
+        $expLabel = DateDisplay::date($exp->format('Y-m-d'));
+        $vigenciaCtx = 'Vigencia del documento (fecha de fin indicada): ' . $expLabel;
 
         if ($exp < $today) {
             $codes[] = 'expired';
-            $msg = 'El documento está caducado: la fecha de fin (' . $expStr . ') es anterior a hoy.';
+            $msg = 'El documento está caducado: la fecha de fin (' . $expLabel . ') es anterior a hoy.';
             $messages[] = $msg;
 
-            return self::pack(false, 'No válido para CAE', $codes, $messages, [$msg]);
+            return self::pack(false, 'No válido', $codes, $messages, [$msg]);
         }
 
         $calc = DocumentIntakeAiService::calcStatus($expiresRaw, null);
         if ($calc !== 'approved') {
             $codes[] = 'not_approved_status';
             $msg = match ($calc) {
-                'in_review' => 'Queda poco margen de vigencia: caduca en 30 días o menos; hay que revisarlo antes de generar el CAE con IA.',
-                'rejected' => 'Según las reglas de vigencia del sistema, este documento no cuenta como aprobado para generar el CAE (revisar fechas o el propio certificado).',
-                'manual_review' => 'Las fechas del documento requieren revisión manual antes de poder considerarlo válido para el CAE.',
-                default => 'No cumple el estado de vigencia requerido (aprobado) para generar el CAE con IA.',
+                'in_review' => 'Queda poco margen de vigencia: caduca en 30 días o menos; hay que revisarlo antes de generar.',
+                'rejected' => 'Según las reglas de vigencia del sistema, este documento no cuenta como aprobado (revisar fechas o el propio certificado).',
+                'manual_review' => 'Las fechas del documento requieren revisión manual antes de poder considerarlo válido.',
+                default => 'No cumple el estado de vigencia requerido (aprobado).',
             };
             $messages[] = $msg;
             $detail = [$msg, $vigenciaCtx];
 
-            return self::pack(false, 'No válido para CAE', $codes, $messages, $detail);
+            return self::pack(false, 'No válido', $codes, $messages, $detail);
         }
 
         if ($isHacienda) {
@@ -94,7 +95,7 @@ final class CaeDocumentValidityService
                 $msg = 'No se pueden comprobar datos AEAT en base de datos (falta migración o columnas).';
                 $messages[] = $msg;
 
-                return self::pack(false, 'No válido para CAE', $codes, $messages, [$msg, $vigenciaCtx]);
+                return self::pack(false, 'No válido', $codes, $messages, [$msg, $vigenciaCtx]);
             }
 
             $codigo = trim((string) ($row['aeat_cotejo_codigo'] ?? ''));
@@ -114,38 +115,38 @@ final class CaeDocumentValidityService
                     $detail[] = $aeLine;
                 }
                 if ($aeAt !== '') {
-                    $detail[] = 'Última comprobación AEAT: ' . $aeAt;
+                    $detail[] = 'Última comprobación AEAT: ' . DateDisplay::dateTime($aeAt);
                 }
                 if ($mock) {
                     $detail[] = 'Entorno de prueba (mock): en producción debe configurarse certificado y endpoint reales.';
                 }
 
-                return self::pack(false, 'No válido para CAE', $codes, $messages, $detail);
+                return self::pack(false, 'No válido', $codes, $messages, $detail);
             }
 
             $detail = [
-                'Documento de Hacienda válido para CAE: vigencia en orden y AEAT correcta (código 1, huella OK).',
+                'Documento de Hacienda válido: vigencia en orden y AEAT correcta (código 1, huella OK).',
                 $vigenciaCtx,
             ];
             if ($aeAt !== '') {
-                $detail[] = 'Comprobación AEAT: ' . $aeAt;
+                $detail[] = 'Comprobación AEAT: ' . DateDisplay::dateTime($aeAt);
             }
             if ($mock) {
                 $detail[] = 'AEAT en modo mock / prueba.';
             }
 
-            $messages[] = 'Listo para CAE.';
+            $messages[] = 'Listo.';
 
-            return self::pack(true, 'Válido para CAE', $codes, $messages, $detail);
+            return self::pack(true, 'Válido', $codes, $messages, $detail);
         }
 
-        $messages[] = 'Listo para CAE.';
+        $messages[] = 'Listo.';
         $detail = [
-            'Documento válido para generar el CAE con IA según vigencia registrada.',
+            'Documento válido según vigencia registrada.',
             $vigenciaCtx,
         ];
 
-        return self::pack(true, 'Válido para CAE', $codes, $messages, $detail);
+        return self::pack(true, 'Válido', $codes, $messages, $detail);
     }
 
     /**

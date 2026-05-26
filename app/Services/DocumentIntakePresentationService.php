@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Support\DateDisplay;
+
 /**
  * Textos de cara al usuario para intake y validez de complementarios.
  * No exponer prefijos de pipeline ([Python], [Vision], etc.).
@@ -83,14 +85,11 @@ final class DocumentIntakePresentationService
     public static function formatExpiryLabel(?string $date): string
     {
         $d = trim((string) $date);
-        if ($d === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) {
+        if ($d === '') {
             return 'Sin fecha detectada';
         }
-        $ts = strtotime($d);
-        if ($ts === false) {
-            return 'Sin fecha detectada';
-        }
-        return date('d/m/Y', $ts);
+        $formatted = DateDisplay::date($d, '');
+        return $formatted !== '' ? $formatted : 'Sin fecha detectada';
     }
 
     /**
@@ -131,13 +130,13 @@ final class DocumentIntakePresentationService
         }
         $summary = trim((string) ($caeValidity['summary'] ?? ''));
         if ($summary !== '') {
-            return $summary;
+            return DateDisplay::humanizeText($summary);
         }
         $lines = $caeValidity['detail_lines'] ?? [];
         if (is_array($lines) && isset($lines[0])) {
-            return trim((string) $lines[0]);
+            return DateDisplay::humanizeText(trim((string) $lines[0]));
         }
-        return trim((string) ($caeValidity['label'] ?? '—'));
+        return DateDisplay::humanizeText(trim((string) ($caeValidity['label'] ?? '—')));
     }
 
     /**
@@ -153,7 +152,7 @@ final class DocumentIntakePresentationService
             $parts[] = 'Vigencia hasta ' . self::formatExpiryLabel($exp);
         }
         if (!is_array($caeValidity)) {
-            return implode(' · ', $parts);
+            return DateDisplay::humanizeText(implode(' · ', $parts));
         }
         $lines = $caeValidity['detail_lines'] ?? [];
         if (is_array($lines)) {
@@ -163,10 +162,12 @@ final class DocumentIntakePresentationService
                 }
                 $t = trim((string) $line);
                 if ($t !== '' && !str_starts_with(mb_strtolower($t), 'vigencia del documento')) {
-                    $parts[] = $t;
+                    $parts[] = DateDisplay::humanizeText($t);
                 }
             }
         }
-        return implode(' · ', array_slice($parts, 0, 2));
+        $line = implode(' · ', array_slice($parts, 0, 2));
+
+        return DateDisplay::humanizeText($line);
     }
 }
