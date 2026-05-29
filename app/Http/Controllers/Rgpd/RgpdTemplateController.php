@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Rgpd;
 
 use App\Core\Controller;
-use App\Core\Database;
 use PDO;
+use App\Services\Rgpd\RgpdTemplateTokens;
+use App\Services\Rgpd\RgpdTemplateRenderer;
 
 final class RgpdTemplateController extends Controller
 {
@@ -31,6 +32,7 @@ final class RgpdTemplateController extends Controller
             'areaBaseUrl' => $this->areaBaseUrl(),
             'baseUrl' => $this->baseUrl(),
             'templates' => $rows,
+            'categories' => RgpdTemplateTokens::categories(),
             'isAdmin' => $role === 'admin',
         ]);
     }
@@ -55,6 +57,7 @@ final class RgpdTemplateController extends Controller
             'baseUrl' => $this->baseUrl(),
             'template' => $tpl,
             'readOnly' => ($tpl['kind'] ?? '') === 'system',
+            'previewHtml' => RgpdTemplateRenderer::preview((string) ($tpl['body_html'] ?? '')),
         ]);
     }
 
@@ -72,6 +75,8 @@ final class RgpdTemplateController extends Controller
             'mode' => 'create',
             'template' => [],
             'errors' => [],
+            'categories' => RgpdTemplateTokens::categories(),
+            'tokens' => RgpdTemplateTokens::definitions(),
         ]);
     }
 
@@ -91,6 +96,8 @@ final class RgpdTemplateController extends Controller
                 'mode' => 'create',
                 'template' => $data,
                 'errors' => $errors,
+                'categories' => RgpdTemplateTokens::categories(),
+                'tokens' => RgpdTemplateTokens::definitions(),
             ]);
             return;
         }
@@ -146,6 +153,8 @@ final class RgpdTemplateController extends Controller
             'mode' => 'edit',
             'template' => $tpl,
             'errors' => [],
+            'categories' => RgpdTemplateTokens::categories(),
+            'tokens' => RgpdTemplateTokens::definitions(),
         ]);
     }
 
@@ -179,6 +188,8 @@ final class RgpdTemplateController extends Controller
                 'mode' => 'edit',
                 'template' => array_merge($tpl, $data),
                 'errors' => $errors,
+                'categories' => RgpdTemplateTokens::categories(),
+                'tokens' => RgpdTemplateTokens::definitions(),
             ]);
             return;
         }
@@ -211,10 +222,39 @@ final class RgpdTemplateController extends Controller
 
         $id = (int) ($params['id'] ?? 0);
         $pdo = $this->rgpdPdo();
+
+        $tpl = $this->findTemplate($id);
+        if ($tpl === null) {
+            http_response_code(404);
+            $this->respond('Plantilla no encontrada');
+            return;
+        }
+        if (($tpl['kind'] ?? '') === 'system') {
+            $this->flash('Las plantillas de sistema no se pueden eliminar.', 'warning', 'RGPD');
+            header('Location: ' . $this->areaBaseUrl() . '/rgpd/plantillas');
+            exit;
+        }
+
+        $usageStmt = $pdo->prepare('SELECT COUNT(*) FROM rgpd_signature_requests WHERE template_id = :id');
+        $usageStmt->execute(['id' => $id]);
+        if ((int) $usageStmt->fetchColumn() > 0) {
+            $this->flash('No se puede eliminar: tiene solicitudes de firma asociadas. Desactívela en su lugar.', 'warning', 'RGPD');
+            header('Location: ' . $this->areaBaseUrl() . '/rgpd/plantillas/' . $id);
+            exit;
+        }
+
+        $campaignStmt = $pdo->prepare('SELECT COUNT(*) FROM rgpd_campaign_templates WHERE template_id = :id');
+        $campaignStmt->execute(['id' => $id]);
+        if ((int) $campaignStmt->fetchColumn() > 0) {
+            $this->flash('No se puede eliminar: está vinculada a campañas de envío. Desactívela en su lugar.', 'warning', 'RGPD');
+            header('Location: ' . $this->areaBaseUrl() . '/rgpd/plantillas/' . $id);
+            exit;
+        }
+
         $stmt = $pdo->prepare("DELETE FROM rgpd_templates WHERE id = :id AND kind = 'user'");
         $stmt->execute(['id' => $id]);
 
-        $this->flash($stmt->rowCount() > 0 ? 'Plantilla eliminada.' : 'No se pudo eliminar (sistema o en uso).', $stmt->rowCount() > 0 ? 'success' : 'warning', 'RGPD');
+        $this->flash($stmt->rowCount() > 0 ? 'Plantilla eliminada.' : 'No se pudo eliminar la plantilla.', $stmt->rowCount() > 0 ? 'success' : 'warning', 'RGPD');
         header('Location: ' . $this->areaBaseUrl() . '/rgpd/plantillas');
         exit;
     }
@@ -233,26 +273,35 @@ final class RgpdTemplateController extends Controller
         return $row ?: null;
     }
 
-    /**
+        /**
      * @param array<string, mixed> $input
      * @return array{0: array<string, mixed>, 1: array<string, string>}
      */
     private function validateTemplateInput(array $input): array
     {
+        $allowedCategories = array_keys(RgpdTemplateTokens::categories());
+        $category = trim((string) ($input['category'] ?? 'consentimiento'));
+        if (!in_array($category, $allowedCategories, true)) {
+            $category = 'consentimiento';
+        }
+
+        $bodyHtml = trim((string) ($input['body_html'] ?? ''));
+        $bodyHtml = strip_tags($bodyHtml, '<h1><h2><h3><h4><p><br><strong><b><em><i><u><ul><ol><li><a><span><div><blockquote>');
+
         $data = [
             'name' => trim((string) ($input['name'] ?? '')),
             'slug' => trim((string) ($input['slug'] ?? '')),
-            'category' => trim((string) ($input['category'] ?? 'consentimiento')),
+            'category' => $category,
             'description' => trim((string) ($input['description'] ?? '')),
-            'body_html' => trim((string) ($input['body_html'] ?? '')),
+            'body_html' => $bodyHtml,
             'is_active' => !empty($input['is_active']),
         ];
         $errors = [];
         if ($data['name'] === '') {
             $errors['name'] = 'El nombre es obligatorio.';
         }
-        if ($data['body_html'] === '') {
-            $errors['body_html'] = 'El contenido HTML es obligatorio.';
+        if ($data['body_html'] === '' || $data['body_html'] === '<p></p>' || $data['body_html'] === '<p><br></p>') {
+            $errors['body_html'] = 'El contenido es obligatorio.';
         }
 
         return [$data, $errors];

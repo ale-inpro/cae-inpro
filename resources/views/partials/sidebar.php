@@ -26,6 +26,8 @@ $rgpdActive = str_contains($reqPath, '/rgpd');
         <span class="app-brand-fallback" style="display:none;">INPRO</span>
     </a>
 
+    <div class="sidebar-nav-scroll">
+
     <?php if ($role === 'gestor' || $role === 'admin'): ?>
         <div class="small app-side-label mb-2">
             <?= $isGestor ? 'Panel gestor' : 'Panel administración' ?>
@@ -74,7 +76,11 @@ $rgpdActive = str_contains($reqPath, '/rgpd');
                 <span class="app-nav-text">RGPD</span>
                 <span class="app-nav-caret"><i class="bi bi-chevron-down"></i></span>
             </button>
-            <div id="rgpd-group" class="app-nav-group <?= $rgpdActive ? 'open' : '' ?>">
+            <div
+                id="rgpd-group"
+                class="app-nav-group <?= $rgpdActive ? 'open' : '' ?>"
+                data-open="<?= $rgpdActive ? '1' : '0' ?>"
+            >
                 <a class="nav-link app-sub-link <?= preg_match('#/rgpd/?$#', $reqPath) ? 'active' : '' ?>"
                    href="<?= htmlspecialchars($base . $rgpdBase) ?>">
                     <span class="app-nav-icon"><i class="bi bi-speedometer2"></i></span>
@@ -107,6 +113,7 @@ $rgpdActive = str_contains($reqPath, '/rgpd');
     <?php else: ?>
         <p class="small text-muted">Sesión sin rol válido.</p>
     <?php endif; ?>
+    </div>
 
     <div class="mt-auto pt-4 small text-muted"><span class="app-version">v0.1</span></div>
 </aside>

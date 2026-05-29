@@ -12,6 +12,15 @@ $sigFilters = $sigFilters ?? ['status' => 'pending', 'template_id' => 0, 'from' 
 $templatesForFilter = $templatesForFilter ?? [];
 $cid = (int) ($c['id'] ?? 0);
 $returnToDocs = ($areaBaseUrl ?? '/admin') . '/rgpd/comunidades/' . $cid . '#rgpd-documentos';
+$contractSignedInput = ($contract && !empty($contract['signed_at']))
+    ? date('Y-m-d', strtotime((string) $contract['signed_at']))
+    : date('Y-m-d');
+$contractExpiresInput = ($contract && !empty($contract['expires_at']))
+    ? date('Y-m-d', strtotime((string) $contract['expires_at']))
+    : date('Y-m-d', strtotime('+1 year'));
+$contractPaperNotes = ($contract && !empty($contract['paper_notes']))
+    ? (string) $contract['paper_notes']
+    : '';
 
 $presidentId = 0;
 foreach ($residents as $r) {
@@ -211,16 +220,17 @@ $sigStatusBadge = static function (string $st): string {
     <div class="tab-pane fade" id="rgpd-documentos" role="tabpanel">
         <div class="subpanel mb-3">
             <div class="subpanel-h d-flex justify-content-between align-items-center">
-                <span>Contrato RGPD (marco)</span>
+                <span>Encargo de tratamiento RGPD comunidad ↔ INPRO</span>
                 <div class="table-actions">
                     <?php if ($contract && !empty($contract['storage_path'])): ?>
-                        <a class="btn btn-sm btn-outline-secondary"
-                           href="<?= $bu . htmlspecialchars((string) $contract['storage_path']) ?>"
-                           target="_blank"
-                           rel="noopener"
-                           title="Ver contrato PDF">
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary"
+                                data-file-preview
+                                data-file-preview-url="<?= htmlspecialchars($bu . (string) $contract['storage_path']) ?>"
+                                data-file-preview-name="<?= htmlspecialchars((string) ($contract['original_filename'] ?? 'Contrato RGPD')) ?>"
+                                title="Ver contrato PDF">
                             <i class="bi bi-eye"></i>
-                        </a>
+                        </button>
                     <?php endif; ?>
                     <button type="button"
                             class="btn btn-sm btn-outline-primary"
@@ -282,7 +292,7 @@ $sigStatusBadge = static function (string $st): string {
                             $collapseId = 'rgpd-pending-' . (int) $doc['template_id'];
                             $hasCamp = !empty($doc['has_campaign']);
                             ?>
-                            <tr class="<?= $hasCamp && (int) ($doc['missing'] ?? 0) > 0 ? 'rgpd-doc-row-expandable' : '' ?>">
+                            <tr class="<?= $hasCamp && (int) ($doc['outstanding'] ?? 0) > 0 ? 'rgpd-doc-row-expandable' : '' ?>">
                                 <td>
                                     <strong><?= htmlspecialchars((string) $doc['template_name']) ?></strong>
                                     <?php if (($doc['kind'] ?? '') === 'system'): ?>
@@ -304,11 +314,17 @@ $sigStatusBadge = static function (string $st): string {
                                         <span class="badge text-bg-success">Completo</span>
                                     <?php else: ?>
                                         <?php
-                                        $missing = (int) ($doc['missing'] ?? 0);
+                                        $signed = max(0, (int) ($doc['signed'] ?? 0));
                                         $eligible = max(0, (int) ($doc['eligible'] ?? 0));
-                                        $completed = max(0, $eligible - $missing);
-                                        $pct = $eligible > 0 ? min(100, (int) round(($completed / $eligible) * 100)) : 0;
-                                        $missingLabel = $missing === 1 ? '1 sin firmar' : $missing . ' sin firmar';
+                                        $outstanding = max(0, (int) ($doc['outstanding'] ?? 0));
+                                        $pendingN = max(0, (int) ($doc['pending_n'] ?? 0));
+                                        $unsentN = max(0, (int) ($doc['unsent_n'] ?? 0));
+                                        $pct = $eligible > 0 ? min(100, (int) round(($signed / $eligible) * 100)) : 0;
+                                        if ($outstanding === 1) {
+                                            $outstandingLabel = '1 sin firmar';
+                                        } else {
+                                            $outstandingLabel = $outstanding . ' sin firmar';
+                                        }
                                         ?>
                                         <div class="rgpd-doc-meter">
                                             <button type="button"
@@ -320,16 +336,16 @@ $sigStatusBadge = static function (string $st): string {
                                                     title="Ver quién falta por firmar">
                                                 <span class="rgpd-doc-meter-chip">
                                                     <i class="bi bi-pen rgpd-doc-meter-chip-icon" aria-hidden="true"></i>
-                                                    <?= htmlspecialchars($missingLabel) ?>
+                                                    <?= htmlspecialchars($outstandingLabel) ?>
                                                     <i class="bi bi-chevron-down rgpd-pending-chevron" aria-hidden="true"></i>
                                                 </span>
                                                 <span class="rgpd-doc-meter-track" role="progressbar"
                                                       aria-valuenow="<?= $pct ?>" aria-valuemin="0" aria-valuemax="100"
-                                                      aria-label="<?= $completed ?> de <?= $eligible ?> firmados">
+                                                      aria-label="<?= $signed ?> de <?= $eligible ?> firmados">
                                                     <span class="rgpd-doc-meter-fill" style="width:<?= $pct ?>%"></span>
                                                 </span>
                                                 <span class="rgpd-doc-meter-meta">
-                                                    <span><?= $completed ?> de <?= $eligible ?> firmados</span>
+                                                    <span><?= $signed ?> de <?= $eligible ?> firmados</span>
                                                     <span class="rgpd-doc-meter-pct"><?= $pct ?>%</span>
                                                 </span>
                                             </button>
@@ -337,13 +353,15 @@ $sigStatusBadge = static function (string $st): string {
                                     <?php endif; ?>
                                 </td>
                             </tr>
-                            <?php if ($hasCamp && (int) ($doc['missing'] ?? 0) > 0): ?>
+                            <?php if ($hasCamp && (int) ($doc['outstanding'] ?? 0) > 0): ?>
                             <tr class="rgpd-doc-detail-row">
                                 <td colspan="4" class="p-0 border-0">
                                     <div class="collapse" id="<?= $collapseId ?>">
                                         <div class="rgpd-pending-panel">
+                                            <?php if ($pendingN > 0): ?>
                                             <div class="rgpd-pending-panel-title small text-muted mb-2">
-                                                <i class="bi bi-person-x me-1"></i> Pendientes de firma
+                                                <i class="bi bi-pen me-1"></i> Pendientes de firma
+                                                <span class="text-muted fw-normal">(<?= $pendingN ?>)</span>
                                             </div>
                                             <ul class="list-unstyled mb-0 small">
                                                 <?php foreach ($doc['pending_residents'] as $pr): ?>
@@ -355,6 +373,23 @@ $sigStatusBadge = static function (string $st): string {
                                                     </li>
                                                 <?php endforeach; ?>
                                             </ul>
+                                            <?php endif; ?>
+                                            <?php if ($unsentN > 0): ?>
+                                            <div class="rgpd-pending-panel-title small text-muted mb-2 <?= $pendingN > 0 ? 'mt-3' : '' ?>">
+                                                <i class="bi bi-person-dash me-1"></i> Sin solicitar
+                                                <span class="text-muted fw-normal">(<?= $unsentN ?>)</span>
+                                            </div>
+                                            <ul class="list-unstyled mb-0 small">
+                                                <?php foreach ($doc['unsent_residents'] as $ur): ?>
+                                                    <li class="rgpd-pending-item py-2 px-2">
+                                                        <strong><?= htmlspecialchars((string) ($ur['resident_name'] ?? '')) ?></strong>
+                                                        <?php if (!empty($ur['email'])): ?>
+                                                            <span class="text-muted"> · <?= htmlspecialchars((string) $ur['email']) ?></span>
+                                                        <?php endif; ?>
+                                                    </li>
+                                                <?php endforeach; ?>
+                                            </ul>
+                                            <?php endif; ?>
                                         </div>
                                     </div>
                                 </td>
@@ -452,8 +487,8 @@ $sigStatusBadge = static function (string $st): string {
                                             <form method="post"
                                                   action="<?= $ab ?>/rgpd/firmas/<?= (int)($s['id']??0) ?>/reenviar"
                                                   class="d-inline"
-                                                  data-confirm="¿Reenviar el correo de firma a este vecino?">
-                                                <button type="submit" class="btn btn-sm btn-outline-primary" title="Reenviar correo">
+                                                  data-confirm="¿Enviar recordatorio de firma a este vecino?">
+                                                <button type="submit" class="btn btn-sm btn-outline-primary" title="Enviar recordatorio">
                                                     <i class="bi bi-envelope-arrow-up"></i>
                                                 </button>
                                             </form>
@@ -494,12 +529,10 @@ $sigStatusBadge = static function (string $st): string {
                 <div class="row g-2">
                     <div class="col-6">
                         <label class="form-label small">Firma</label>
-                        <input type="date" name="signed_at" class="form-control form-control-sm" value="<?= date('Y-m-d') ?>">
-                    </div>
+                        <input type="date" name="signed_at" class="form-control form-control-sm" value="<?= htmlspecialchars($contractSignedInput) ?>">                    </div>
                     <div class="col-6">
                         <label class="form-label small">Vence</label>
-                        <input type="date" name="expires_at" class="form-control form-control-sm" value="<?= date('Y-m-d', strtotime('+1 year')) ?>">
-                    </div>
+                        <input type="date" name="expires_at" class="form-control form-control-sm" value="<?= htmlspecialchars($contractExpiresInput) ?>">                    </div>
                 </div>
             </div>
             <div class="modal-footer border-top-0 gap-2">
@@ -521,16 +554,13 @@ $sigStatusBadge = static function (string $st): string {
                 <div class="row g-2 mb-3">
                     <div class="col-6">
                         <label class="form-label small">Firma</label>
-                        <input type="date" name="signed_at" class="form-control form-control-sm" value="<?= date('Y-m-d') ?>">
-                    </div>
+                        <input type="date" name="signed_at" class="form-control form-control-sm" value="<?= htmlspecialchars($contractSignedInput) ?>">                    </div>
                     <div class="col-6">
                         <label class="form-label small">Vence</label>
-                        <input type="date" name="expires_at" class="form-control form-control-sm" value="<?= date('Y-m-d', strtotime('+1 year')) ?>">
-                    </div>
+                        <input type="date" name="expires_at" class="form-control form-control-sm" value="<?= htmlspecialchars($contractExpiresInput) ?>">                    </div>
                 </div>
                 <label class="form-label small">Notas</label>
-                <textarea name="paper_notes" class="form-control form-control-sm" rows="2" placeholder="Opcional"></textarea>
-            </div>
+                <textarea name="paper_notes" class="form-control form-control-sm" rows="2" placeholder="Opcional"><?= htmlspecialchars($contractPaperNotes) ?></textarea>            </div>
             <div class="modal-footer border-top-0 gap-2">
                 <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
                 <button type="submit" class="btn btn-primary btn-sm">Registrar</button>

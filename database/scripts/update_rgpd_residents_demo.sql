@@ -12,9 +12,6 @@ UPDATE community_residents SET
     dni = '12345678A',
     unit_label = '1º A',
     propiedades = '{"vivienda":"1º A","coeficiente":0.08,"garaje":"G-12"}'::jsonb,
-    enviar_email = TRUE,
-    enviar_whatsapp = TRUE,
-    enviar_postal = FALSE,
     direccion_postal = NULL,
     es_representante = FALSE,
     is_owner = TRUE,
@@ -33,9 +30,6 @@ UPDATE community_residents SET
     dni = '23456789B',
     unit_label = '2º B',
     propiedades = '{"vivienda":"2º B","coeficiente":0.06}'::jsonb,
-    enviar_email = TRUE,
-    enviar_whatsapp = FALSE,
-    enviar_postal = TRUE,
     direccion_postal = 'C/ Mayor 15, 2º B, 28001 Madrid',
     es_representante = FALSE,
     is_owner = TRUE,
@@ -54,9 +48,6 @@ UPDATE community_residents SET
     dni = '34567890C',
     unit_label = '3º C',
     propiedades = '{"vivienda":"3º C","coeficiente":0.05,"trastero":"T-3"}'::jsonb,
-    enviar_email = FALSE,
-    enviar_whatsapp = FALSE,
-    enviar_postal = TRUE,
     direccion_postal = 'Av. de la Constitución 8, 3º C, 28012 Madrid',
     es_representante = TRUE,
     is_owner = TRUE,
@@ -68,7 +59,7 @@ WHERE community_id = 4
 
 COMMIT;
 
-SELECT id, nombre, apellidos, email, telefono, enviar_email, enviar_postal, is_president, es_representante
+SELECT id, nombre, apellidos, email, telefono, direccion_postal, is_president, es_representante
 FROM community_residents
 WHERE community_id = 4
 ORDER BY is_president DESC, nombre;

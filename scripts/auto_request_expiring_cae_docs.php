@@ -199,6 +199,9 @@ foreach ($techs as $tech) {
         <p>Detectamos documentos caducados o próximos a caducar. Necesitamos actualización de:</p>
         <ul>{$listHtml}</ul>
         <p><a href='" . htmlspecialchars($portalUrl) . "'>Subir documentos en el portal</a></p>
+        <p style=\"font-size:12px;color:#6b7280\">
+            El enlace permanece activo hasta que todos los documentos sean válidos.
+        </p>
     ";
 
     Mailer::send($techEmail, 'Actualización de documentación CAE', Mailer::template('Solicitud automática CAE', $body));

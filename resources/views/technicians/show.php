@@ -170,31 +170,69 @@ $statusBadge = static function (string $status): string {
             <div class="subpanel mb-3">
                 <div class="subpanel-h">Subir documento complementario</div>
                 <div class="subpanel-b">
-                    <form id="form-tech-upload-supporting" method="post" enctype="multipart/form-data" action="<?= $ab ?>/cae/<?= (int) ($current['id'] ?? 0) ?>/documentos" class="row g-2">
+                    <form id="form-tech-upload-supporting"
+                        method="post"
+                        enctype="multipart/form-data"
+                        action="<?= $ab ?>/cae/<?= (int) ($current['id'] ?? 0) ?>/documentos"
+                        data-upload-action="<?= $ab ?>/cae/<?= (int) ($current['id'] ?? 0) ?>/documentos"
+                        data-csv-action="<?= $ab ?>/cae/<?= (int) ($current['id'] ?? 0) ?>/documentos/hacienda-csv"
+                        class="row g-2">
                         <input type="hidden" name="return_to" value="<?= $ab ?>/tecnicos/<?= (int) ($t['id'] ?? 0) ?>#pane-docs">
                         <input type="hidden" name="upload_mode" value="supporting">
+                        <input type="hidden" name="submit_mode" id="tech-upload-submit-mode" value="file">
+
                         <div class="col-md-4">
                             <select name="document_type_id" id="tech-upload-doc-type" class="form-select" required>
-                                <option value="" data-active-filename="">Tipo de documento</option>
+                                <option value="" data-active-filename="" data-is-hacienda="0">Tipo de documento</option>
                                 <?php foreach ($types as $dt): ?>
                                     <?php
                                         $dtypeId = (int) ($dt['id'] ?? 0);
                                         $prevFn = isset($activeSupportingFilenameByDocTypeId[$dtypeId])
                                             ? trim((string) $activeSupportingFilenameByDocTypeId[$dtypeId])
                                             : '';
+                                        $isHaciendaOpt = trim((string) ($dt['name'] ?? '')) === \App\Services\CaeReadinessService::DOCUMENT_TYPE_NAME_HACIENDA;
                                     ?>
                                     <option value="<?= $dtypeId ?>"
-                                            data-active-filename="<?= htmlspecialchars($prevFn, ENT_QUOTES, 'UTF-8') ?>">
+                                            data-active-filename="<?= htmlspecialchars($prevFn, ENT_QUOTES, 'UTF-8') ?>"
+                                            data-is-hacienda="<?= $isHaciendaOpt ? '1' : '0' ?>">
                                         <?= htmlspecialchars((string) ($dt['name'] ?? '')) ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
+
                         <div class="col-md-6">
-                            <input type="file" name="document_file" class="form-control" required>
+                            <input type="file" name="document_file" id="tech-upload-doc-file" class="form-control" accept=".pdf,application/pdf">
                         </div>
+
                         <div class="col-md-2">
-                            <button class="btn btn-success w-100" type="submit"><i class="bi bi-upload"></i></button>
+                            <button class="btn btn-success w-100" type="submit" id="tech-upload-btn-file">
+                                <i class="bi bi-upload"></i> Subir
+                            </button>
+                        </div>
+
+                        <div class="col-12 d-none" id="tech-hacienda-csv-row">
+                            <div class="row g-2 align-items-end">
+                                <div class="col-md-8">
+                                    <label for="tech-hacienda-csv-input" class="form-label small mb-1">CSV del certificado (16 caracteres)</label>
+                                    <input type="text"
+                                        name="manual_aeat_csv"
+                                        id="tech-hacienda-csv-input"
+                                        class="form-control text-uppercase"
+                                        maxlength="16"
+                                        pattern="[A-Za-z0-9]{16}"
+                                        placeholder="8KFA439XY6N4SP24"
+                                        autocomplete="off">
+                                </div>
+                                <div class="col-md-4">
+                                    <button class="btn btn-primary w-100" type="submit" id="tech-upload-btn-csv">
+                                        <i class="bi bi-search"></i> Obtener certificado
+                                    </button>
+                                </div>
+                            </div>
+                            <p class="small text-muted mb-0 mt-1">
+                                Consulta Hacienda con el CSV sin subir escaneo. Si subes PDF, se usará el flujo habitual (extracción de CSV del archivo).
+                            </p>
                         </div>
                     </form>
                 </div>
@@ -209,7 +247,9 @@ $statusBadge = static function (string $status): string {
                 </div>
                 <div class="subpanel-b">
                     <p class="doc-panel-intro mb-3">
-                        Estos archivos no se han validado automáticamente. Indica la <strong>fecha de caducidad</strong> y aprueba para publicarlos.
+                        Estos archivos no se han validado automáticamente.
+                        Para <strong>Hacienda</strong>, indica el <strong>CSV</strong> (16 caracteres).
+                        Para el resto, indica la <strong>fecha de caducidad</strong> y aprueba para publicarlos.
                         El estado <strong>Válido</strong> / <strong>No válido</strong> aparecerá en la tabla inferior.
                     </p>
                     <div class="table-responsive">
@@ -241,37 +281,72 @@ $statusBadge = static function (string $status): string {
                                         <?= htmlspecialchars($pres['reason'], ENT_QUOTES, 'UTF-8') ?>
                                     </td>
                                     <td data-label="Análisis">
-                                        <span class="badge rounded-pill <?= htmlspecialchars($pres['status_badge'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($pres['status_label'], ENT_QUOTES, 'UTF-8') ?></span>
-                                        <div class="doc-table-meta small text-muted mt-1">
-                                            Caducidad detectada: <?= htmlspecialchars($pres['expiry_label'], ENT_QUOTES, 'UTF-8') ?>
-                                            · Confianza: <?= htmlspecialchars($pres['confidence_label'], ENT_QUOTES, 'UTF-8') ?>
-                                        </div>
+                                        <?php
+                                            $isHaciendaIntakeRow = trim((string) ($p['document_name'] ?? '')) === \App\Services\CaeReadinessService::DOCUMENT_TYPE_NAME_HACIENDA;
+                                        ?>
+                                        <?php if ($isHaciendaIntakeRow): ?>
+                                            <span class="badge rounded-pill text-bg-light text-dark border">CSV</span>
+                                            <div class="doc-table-meta small text-muted mt-1">
+                                                <?= htmlspecialchars(trim((string) ($p['ai_notes'] ?? 'Pendiente de CSV manual.')), ENT_QUOTES, 'UTF-8') ?>
+                                            </div>
+                                        <?php else: ?>
+                                            <span class="badge rounded-pill <?= htmlspecialchars($pres['status_badge'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($pres['status_label'], ENT_QUOTES, 'UTF-8') ?></span>
+                                            <div class="doc-table-meta small text-muted mt-1">
+                                                Caducidad detectada: <?= htmlspecialchars($pres['expiry_label'], ENT_QUOTES, 'UTF-8') ?>
+                                                · Confianza: <?= htmlspecialchars($pres['confidence_label'], ENT_QUOTES, 'UTF-8') ?>
+                                            </div>
+                                        <?php endif; ?>
                                     </td>
                                     <td data-label="Acciones" class="text-end">
-                                        <div class="table-actions intake-review-actions flex-wrap justify-content-end">
+                                        <?php $intakeApproveFormId = 'intake-approve-' . (int) ($p['id'] ?? 0); ?>
+                                        <div class="table-actions intake-review-actions">
                                             <?php if (!empty($p['storage_path'])): ?>
                                                 <button type="button" class="btn btn-sm btn-outline-secondary intake-review-actions__btn" data-file-preview
                                                     data-file-preview-url="<?= htmlspecialchars((string) (($baseUrl ?? '') . ($p['storage_path'] ?? ''))) ?>"
                                                     data-file-preview-name="<?= htmlspecialchars((string) ($p['original_filename'] ?? 'Documento')) ?>"
                                                     title="Ver"><i class="bi bi-eye"></i></button>
                                             <?php endif; ?>
-                                            <form method="post" action="<?= $ab ?>/cae/intake/<?= (int) ($p['id'] ?? 0) ?>/approve" class="intake-review-actions__group d-flex align-items-end gap-2 flex-wrap">
-                                                <input type="hidden" name="return_to" value="<?= $ab ?>/tecnicos/<?= (int) ($t['id'] ?? 0) ?>#pane-docs">
-                                                <div class="doc-approve-date">
-                                                    <label class="form-label small mb-0">Caducidad<?= $needsForcedDate ? ' *' : '' ?></label>
-                                                    <input type="date" name="manual_expires_at" class="form-control form-control-sm"
-                                                        value="<?= $aiExpiryVal ?>" <?= $needsForcedDate ? 'required' : '' ?>>
+                                            <div class="intake-review-actions__controls">
+                                                <?php
+                                                    $isHaciendaIntake = trim((string) ($p['document_name'] ?? '')) === \App\Services\CaeReadinessService::DOCUMENT_TYPE_NAME_HACIENDA;
+                                                    $detectedCsv = isset($p['extracted_aeat_csv']) ? trim((string) $p['extracted_aeat_csv']) : '';
+                                                ?>
+                                                <form method="post" id="<?= htmlspecialchars($intakeApproveFormId, ENT_QUOTES, 'UTF-8') ?>"
+                                                    action="<?= $ab ?>/cae/intake/<?= (int) ($p['id'] ?? 0) ?>/approve"
+                                                    class="intake-review-actions__group intake-review-actions__approve mb-0">
+                                                    <input type="hidden" name="return_to" value="<?= $ab ?>/tecnicos/<?= (int) ($t['id'] ?? 0) ?>#pane-docs">
+                                                    <?php if ($isHaciendaIntake): ?>
+                                                        <div class="doc-approve-date">
+                                                            <label class="form-label small mb-0">CSV *</label>
+                                                            <input type="text" name="manual_aeat_csv" class="form-control form-control-sm text-uppercase"
+                                                                maxlength="16" pattern="[A-Za-z0-9]{16}" required autocomplete="off"
+                                                                placeholder="16 caracteres"
+                                                                value="<?= htmlspecialchars($detectedCsv, ENT_QUOTES, 'UTF-8') ?>">
+                                                        </div>
+                                                    <?php else: ?>
+                                                        <div class="doc-approve-date">
+                                                            <label class="form-label small mb-0">Caducidad<?= $needsForcedDate ? ' *' : '' ?></label>
+                                                            <input type="date" name="manual_expires_at" class="form-control form-control-sm"
+                                                                value="<?= $aiExpiryVal ?>" <?= $needsForcedDate ? 'required' : '' ?>>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                </form>
+                                                <div class="intake-review-actions__buttons">
+                                                    <button class="btn btn-sm btn-success flex-shrink-0" type="submit"
+                                                        form="<?= htmlspecialchars($intakeApproveFormId, ENT_QUOTES, 'UTF-8') ?>"
+                                                        title="Aprobar y publicar">
+                                                        <i class="bi bi-check2 d-md-none"></i><span class="d-none d-md-inline">Aprobar</span>
+                                                    </button>
+                                                    <form method="post" action="<?= $ab ?>/cae/intake/<?= (int) ($p['id'] ?? 0) ?>/reject"
+                                                        class="intake-review-actions__group intake-review-actions__reject mb-0"
+                                                        data-confirm="¿Rechazar este documento?">
+                                                        <input type="hidden" name="return_to" value="<?= $ab ?>/tecnicos/<?= (int) ($t['id'] ?? 0) ?>#pane-docs">
+                                                        <button class="btn btn-sm btn-outline-danger flex-shrink-0" type="submit" title="Rechazar">
+                                                            <i class="bi bi-x-lg d-md-none"></i><span class="d-none d-md-inline">Rechazar</span>
+                                                        </button>
+                                                    </form>
                                                 </div>
-                                                <button class="btn btn-sm btn-success flex-shrink-0" type="submit" title="Aprobar y publicar">
-                                                    <i class="bi bi-check2 d-md-none"></i><span class="d-none d-md-inline">Aprobar</span>
-                                                </button>
-                                            </form>
-                                            <form method="post" action="<?= $ab ?>/cae/intake/<?= (int) ($p['id'] ?? 0) ?>/reject" class="intake-review-actions__group d-flex align-items-end" data-confirm="¿Rechazar este documento?">
-                                                <input type="hidden" name="return_to" value="<?= $ab ?>/tecnicos/<?= (int) ($t['id'] ?? 0) ?>#pane-docs">
-                                                <button class="btn btn-sm btn-outline-danger flex-shrink-0" type="submit" title="Rechazar">
-                                                    <i class="bi bi-x-lg d-md-none"></i><span class="d-none d-md-inline">Rechazar</span>
-                                                </button>
-                                            </form>
+                                            </div>
                                         </div>
                                     </td>
                                 </tr>
@@ -376,7 +451,7 @@ $statusBadge = static function (string $status): string {
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
                 <button type="button" class="btn btn-warning" id="tech-upload-replace-confirm">
-                    <i class="bi bi-upload me-1"></i>Subir y sustituir
+                    <i class="bi bi-upload me-1" id="tech-upload-replace-confirm-icon"></i><span id="tech-upload-replace-confirm-label">Subir y sustituir</span>
                 </button>
             </div>
         </div>
@@ -387,12 +462,39 @@ $statusBadge = static function (string $status): string {
 document.addEventListener('DOMContentLoaded', function () {
     const form = document.getElementById('form-tech-upload-supporting');
     const typeSelect = document.getElementById('tech-upload-doc-type');
+    const fileInput = document.getElementById('tech-upload-doc-file');
+    const csvRow = document.getElementById('tech-hacienda-csv-row');
+    const csvInput = document.getElementById('tech-hacienda-csv-input');
+    const submitMode = document.getElementById('tech-upload-submit-mode');
+    const btnFile = document.getElementById('tech-upload-btn-file');
+    const btnCsv = document.getElementById('tech-upload-btn-csv');
     const modalEl = document.getElementById('modalTechUploadReplace');
     if (!form) return;
 
+    const uploadAction = form.dataset.uploadAction || form.action;
+    const csvAction = form.dataset.csvAction || '';
     const modal = modalEl ? bootstrap.Modal.getOrCreateInstance(modalEl) : null;
     const introEl = document.getElementById('tech-upload-replace-intro');
     const confirmBtn = document.getElementById('tech-upload-replace-confirm');
+    const confirmLabel = document.getElementById('tech-upload-replace-confirm-label');
+    const confirmIcon = document.getElementById('tech-upload-replace-confirm-icon');
+
+    const setReplaceModalMode = (mode) => {
+        if (mode === 'csv') {
+            if (confirmLabel) confirmLabel.textContent = 'Obtener y sustituir';
+            if (confirmIcon) confirmIcon.className = 'bi bi-search me-1';
+        } else {
+            if (confirmLabel) confirmLabel.textContent = 'Subir y sustituir';
+            if (confirmIcon) confirmIcon.className = 'bi bi-upload me-1';
+        }
+    };
+
+    csvInput?.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            if (submitMode) submitMode.value = 'csv';
+            form.action = csvAction;
+        }
+    });
 
     const clearModalBackdrop = () => {
         document.querySelectorAll('.modal-backdrop').forEach((el) => el.remove());
@@ -404,29 +506,111 @@ document.addEventListener('DOMContentLoaded', function () {
     const lockAdminUploadForm = () => {
         form.dataset.submitting = '1';
         setTimeout(function () {
-            form.querySelectorAll('button[type="submit"], select, input[type="file"]').forEach(function (el) {
+            form.querySelectorAll('button[type="submit"], select, input[type="file"], input[type="text"]').forEach(function (el) {
                 el.disabled = true;
             });
         }, 0);
     };
 
-    const showAnalyzeOverlay = () => {
+    const showAnalyzeOverlay = (title) => {
         requestAnimationFrame(() => {
             clearModalBackdrop();
             window.AppDocAnalyzeOverlay?.show({
-                title: 'Analizando documento complementario'
+                title: title || 'Analizando documento complementario'
             });
             lockAdminUploadForm();
         });
     };
 
-    form.addEventListener('submit', function (e) {
+    const syncHaciendaUi = () => {
+        if (!typeSelect || !csvRow || !fileInput) return;
+        const opt = typeSelect.options[typeSelect.selectedIndex];
+        const isHacienda = (opt?.getAttribute('data-is-hacienda') || '0') === '1';
+        csvRow.classList.toggle('d-none', !isHacienda);
+        if (submitMode?.value !== 'csv') {
+            fileInput.required = !isHacienda ? true : false;
+        }
+    };
 
+    typeSelect?.addEventListener('change', function () {
+        if (submitMode) submitMode.value = 'file';
+        form.action = uploadAction;
+        syncHaciendaUi();
+    });
+
+    btnFile?.addEventListener('click', function () {
+        if (submitMode) submitMode.value = 'file';
+        form.action = uploadAction;
+        if (fileInput) fileInput.required = true;
+    });
+
+    btnCsv?.addEventListener('click', function () {
+        if (submitMode) submitMode.value = 'csv';
+        form.action = csvAction;
+        if (fileInput) fileInput.required = false;
+    });
+
+    syncHaciendaUi();
+
+    form.addEventListener('submit', function (e) {
         if (form.dataset.submitting === '1') {
             e.preventDefault();
             return;
         }
 
+        if (document.activeElement === csvInput && csvRow && !csvRow.classList.contains('d-none')) {
+            if (submitMode) submitMode.value = 'csv';
+            form.action = csvAction;
+        }
+
+        const isCsvMode = submitMode?.value === 'csv';
+
+        if (isCsvMode) {
+            const csv = (csvInput?.value || '').trim();
+            if (!/^[A-Za-z0-9]{16}$/.test(csv)) {
+                e.preventDefault();
+                alert('Indica un CSV válido de 16 caracteres alfanuméricos.');
+                return;
+            }
+            if (form.dataset.confirmed === '1') {
+                delete form.dataset.confirmed;
+                showAnalyzeOverlay('Obteniendo certificado de Hacienda');
+                return;
+            }
+            if (!typeSelect) {
+                showAnalyzeOverlay('Obteniendo certificado de Hacienda');
+                return;
+            }
+            const opt = typeSelect.options[typeSelect.selectedIndex];
+            const prev = (opt?.getAttribute('data-active-filename') || '').trim();
+            if (prev === '') {
+                showAnalyzeOverlay('Obteniendo certificado de Hacienda');
+                return;
+            }
+            e.preventDefault();
+            const typeName = (opt.textContent || '').trim();
+            if (introEl) {
+                introEl.textContent =
+                    'Vas a obtener un nuevo certificado de «' + typeName +
+                    '» por CSV. Sustituirá el vigente «' + prev + '».';
+            }
+            setReplaceModalMode('csv');
+            const onConfirm = () => {
+                confirmBtn?.removeEventListener('click', onConfirm);
+                const submitAfterHide = () => {
+                    modalEl?.removeEventListener('hidden.bs.modal', submitAfterHide);
+                    form.dataset.confirmed = '1';
+                    form.requestSubmit();
+                };
+                modalEl?.addEventListener('hidden.bs.modal', submitAfterHide, { once: true });
+                modal?.hide();
+            };
+            confirmBtn?.addEventListener('click', onConfirm, { once: true });
+            modal?.show();
+            return;
+        }
+
+        // --- Flujo subir PDF (existente) ---
         if (form.dataset.confirmed === '1') {
             delete form.dataset.confirmed;
             showAnalyzeOverlay();
@@ -434,7 +618,18 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         if (!typeSelect) {
+            if (!fileInput?.files?.length) {
+                e.preventDefault();
+                alert('Selecciona un archivo PDF.');
+                return;
+            }
             showAnalyzeOverlay();
+            return;
+        }
+
+        if (!fileInput?.files?.length) {
+            e.preventDefault();
+            alert('Selecciona un archivo PDF.');
             return;
         }
 
@@ -451,6 +646,7 @@ document.addEventListener('DOMContentLoaded', function () {
             introEl.textContent =
                 'Vas a subir un nuevo «' + typeName + '». Sustituirá el archivo vigente «' + prev + '».';
         }
+        setReplaceModalMode('file');
 
         const onConfirm = () => {
             confirmBtn?.removeEventListener('click', onConfirm);

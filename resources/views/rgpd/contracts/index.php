@@ -22,7 +22,7 @@ $contractState = static function (array $row): array {
 <div class="page-header mb-4">
     <div>
         <h1 class="h3 page-title mb-1">Contratos RGPD</h1>
-        <p class="page-meta mb-0">Contrato marco de encargo de tratamiento (PDF o registro en papel).</p>
+        <p class="page-meta mb-0">Encargo de tratamiento RGPD entre INPRO y cada comunidad (PDF o registro en papel).</p>
     </div>
 </div>
 
@@ -73,13 +73,14 @@ $contractState = static function (array $row): array {
                     <td class="text-end text-nowrap">
                         <div class="table-actions actions-cell justify-content-end">
                             <?php if ($hasContract && $pdfPath !== ''): ?>
-                                <a class="btn btn-sm btn-outline-secondary"
-                                   href="<?= $bu . htmlspecialchars($pdfPath) ?>"
-                                   target="_blank"
-                                   rel="noopener"
-                                   title="Ver contrato PDF">
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-secondary"
+                                        data-file-preview
+                                        data-file-preview-url="<?= htmlspecialchars($bu . $pdfPath) ?>"
+                                        data-file-preview-name="<?= htmlspecialchars((string) ($row['original_filename'] ?? 'Contrato RGPD')) ?>"
+                                        title="Ver contrato PDF">
                                     <i class="bi bi-eye"></i>
-                                </a>
+                                </button>
                             <?php endif; ?>
                             <button type="button"
                                     class="btn btn-sm btn-outline-primary"
@@ -107,9 +108,20 @@ $contractState = static function (array $row): array {
 
 <?php foreach ($items as $row): ?>
     <?php $cid = (int) ($row['id'] ?? 0); ?>
+    <?php
+    $modalHasContract = !empty($row['contract_id']);
+    $modalSigned = ($modalHasContract && !empty($row['signed_at']))
+        ? date('Y-m-d', strtotime((string) $row['signed_at']))
+        : date('Y-m-d');
+    $modalExpires = ($modalHasContract && !empty($row['expires_at']))
+        ? date('Y-m-d', strtotime((string) $row['expires_at']))
+        : date('Y-m-d', strtotime($modalSigned . ' +1 year'));
+    $modalPaperNotes = $modalHasContract ? (string) ($row['paper_notes'] ?? '') : '';
+    ?>
     <div class="modal fade" id="uploadModal<?= $cid ?>" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <form method="post" action="<?= $ab ?>/rgpd/contratos/<?= $cid ?>/upload" enctype="multipart/form-data" class="modal-content border-0 shadow-lg">
+                <input type="hidden" name="return_to" value="<?= htmlspecialchars($ab . '/rgpd/contratos', ENT_QUOTES, 'UTF-8') ?>">
                 <div class="modal-header border-bottom-0 pb-0">
                     <h3 class="modal-title h6 mb-0">Subir contrato — <?= htmlspecialchars((string) ($row['name'] ?? '')) ?></h3>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
@@ -122,12 +134,10 @@ $contractState = static function (array $row): array {
                     <div class="row g-2">
                         <div class="col-6">
                             <label class="form-label small">Fecha firma</label>
-                            <input type="date" name="signed_at" class="form-control form-control-sm" value="<?= date('Y-m-d') ?>">
-                        </div>
+                            <input type="date" name="signed_at" class="form-control form-control-sm" value="<?= htmlspecialchars($modalSigned) ?>">                        </div>
                         <div class="col-6">
                             <label class="form-label small">Vencimiento</label>
-                            <input type="date" name="expires_at" class="form-control form-control-sm" value="<?= date('Y-m-d', strtotime('+1 year')) ?>">
-                        </div>
+                            <input type="date" name="expires_at" class="form-control form-control-sm" value="<?= htmlspecialchars($modalExpires) ?>">                        </div>
                     </div>
                 </div>
                 <div class="modal-footer border-top-0 gap-2">
@@ -141,6 +151,7 @@ $contractState = static function (array $row): array {
     <div class="modal fade" id="paperModal<?= $cid ?>" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <form method="post" action="<?= $ab ?>/rgpd/contratos/<?= $cid ?>/papel" class="modal-content border-0 shadow-lg">
+                <input type="hidden" name="return_to" value="<?= htmlspecialchars($ab . '/rgpd/contratos', ENT_QUOTES, 'UTF-8') ?>">
                 <div class="modal-header border-bottom-0 pb-0">
                     <h3 class="modal-title h6 mb-0">Contrato en papel — <?= htmlspecialchars((string) ($row['name'] ?? '')) ?></h3>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
@@ -149,16 +160,13 @@ $contractState = static function (array $row): array {
                     <div class="row g-2 mb-3">
                         <div class="col-6">
                             <label class="form-label small">Fecha firma</label>
-                            <input type="date" name="signed_at" class="form-control form-control-sm" value="<?= date('Y-m-d') ?>">
-                        </div>
+                            <input type="date" name="signed_at" class="form-control form-control-sm" value="<?= htmlspecialchars($modalSigned) ?>">                        </div>
                         <div class="col-6">
                             <label class="form-label small">Vencimiento</label>
-                            <input type="date" name="expires_at" class="form-control form-control-sm" value="<?= date('Y-m-d', strtotime('+1 year')) ?>">
-                        </div>
+                            <input type="date" name="expires_at" class="form-control form-control-sm" value="<?= htmlspecialchars($modalExpires) ?>">                        </div>
                     </div>
                     <label class="form-label small">Notas</label>
-                    <textarea name="paper_notes" class="form-control form-control-sm" rows="2" placeholder="Opcional"></textarea>
-                </div>
+                    <textarea name="paper_notes" class="form-control form-control-sm" rows="2" placeholder="Opcional"><?= htmlspecialchars($modalPaperNotes) ?></textarea>                </div>
                 <div class="modal-footer border-top-0 gap-2">
                     <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
                     <button type="submit" class="btn btn-primary btn-sm">Registrar</button>

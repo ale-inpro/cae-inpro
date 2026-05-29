@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Rgpd;
 
 use App\Core\Controller;
 use App\Services\Rgpd\RgpdAccess;
+use App\Services\Rgpd\RgpdTemplateCompliance;
 use PDO;
 
 final class RgpdCommunityController extends Controller
@@ -64,7 +65,7 @@ final class RgpdCommunityController extends Controller
         $residentsStmt = $pdo->prepare("
             SELECT id, nombre, apellidos, full_name, email, telefono, dni,
                 unit_label, propiedades,
-                enviar_email, enviar_whatsapp, enviar_postal, direccion_postal,
+                direccion_postal,
                 es_representante, is_owner, is_president, is_active
             FROM community_residents
             WHERE community_id = :cid
@@ -73,8 +74,8 @@ final class RgpdCommunityController extends Controller
         $residentsStmt->execute(['cid' => $id]);
         $residentRows = $residentsStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $residentSignStats = $this->loadResidentSignStats($pdo, $id);
-        $documentSummaries = $this->loadDocumentSummaries($pdo, $id);
+        $residentSignStats = RgpdTemplateCompliance::loadResidentStats($pdo, $id);
+        $documentSummaries = RgpdTemplateCompliance::loadDocumentSummaries($pdo, $id);
 
         $sigStatus = (string) ($_GET['sig_status'] ?? 'pending');
         if (!in_array($sigStatus, ['pending', 'signed', 'paper', 'cancelled', 'all'], true)) {
@@ -222,145 +223,5 @@ final class RgpdCommunityController extends Controller
         $this->flash('Presidente desasignado.', 'info', 'RGPD');
         header('Location: ' . $this->areaBaseUrl() . '/rgpd/comunidades/' . $communityId . '#rgpd-vecinos');
         exit;
-    }
-
-    /** @return array<int, array{signed_n: int, pending_n: int}> */
-    private function loadResidentSignStats(PDO $pdo, int $communityId): array
-    {
-        $stmt = $pdo->prepare("
-            SELECT resident_id,
-                COUNT(*) FILTER (WHERE status IN ('signed', 'paper')) AS signed_n,
-                COUNT(*) FILTER (WHERE status = 'pending') AS pending_n
-            FROM rgpd_signature_requests
-            WHERE community_id = :cid
-            GROUP BY resident_id
-        ");
-        $stmt->execute(['cid' => $communityId]);
-        $map = [];
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $map[(int) $row['resident_id']] = [
-                'signed_n' => (int) ($row['signed_n'] ?? 0),
-                'pending_n' => (int) ($row['pending_n'] ?? 0),
-            ];
-        }
-        return $map;
-    }
-
-    /** @return list<array<string, mixed>> */
-    private function loadDocumentSummaries(PDO $pdo, int $communityId): array
-    {
-        $templates = $pdo->query("
-            SELECT id, name, kind FROM rgpd_templates
-            WHERE is_active = TRUE
-            ORDER BY kind DESC, name
-        ")->fetchAll(PDO::FETCH_ASSOC);
-
-        $lastCampStmt = $pdo->prepare("
-            SELECT cp.id, cp.audience, cp.completed_at
-            FROM rgpd_campaigns cp
-            INNER JOIN rgpd_campaign_templates rct ON rct.campaign_id = cp.id
-            WHERE cp.community_id = :cid
-                AND cp.status = 'completed'
-                AND rct.template_id = :tid
-            ORDER BY cp.completed_at DESC NULLS LAST, cp.id DESC
-            LIMIT 1
-        ");
-
-        $statsStmt = $pdo->prepare("
-            SELECT status, COUNT(*)::int AS cnt
-            FROM rgpd_signature_requests
-            WHERE community_id = :cid AND template_id = :tid
-            GROUP BY status
-        ");
-
-        $rows = [];
-        foreach ($templates as $tpl) {
-            $tid = (int) $tpl['id'];
-            $lastCampStmt->execute(['cid' => $communityId, 'tid' => $tid]);
-            $camp = $lastCampStmt->fetch(PDO::FETCH_ASSOC) ?: null;
-
-            $statsStmt->execute(['cid' => $communityId, 'tid' => $tid]);
-            $byStatus = [];
-            foreach ($statsStmt->fetchAll(PDO::FETCH_ASSOC) as $s) {
-                $byStatus[(string) $s['status']] = (int) $s['cnt'];
-            }
-
-            $audience = $camp ? (string) ($camp['audience'] ?? 'both') : null;
-            $eligible = $camp ? $this->countEligibleResidents($pdo, $communityId, $audience) : 0;
-            $signed = ($byStatus['signed'] ?? 0) + ($byStatus['paper'] ?? 0);
-            $pending = $byStatus['pending'] ?? 0;
-
-            $pendingResidents = [];
-            if ($camp !== null) {
-                $audWhere = $this->audienceSqlFragment($audience);
-                $sql = "
-                    SELECT r.id,
-                        TRIM(CONCAT_WS(' ', r.nombre, r.apellidos)) AS resident_name,
-                        r.email
-                    FROM community_residents r
-                    WHERE r.community_id = :cid AND r.is_active = TRUE
-                    {$audWhere}
-                    AND NOT EXISTS (
-                        SELECT 1 FROM rgpd_signature_requests s
-                        WHERE s.resident_id = r.id AND s.template_id = :tid
-                            AND s.status IN ('signed', 'paper')
-                    )
-                    ORDER BY r.nombre, r.apellidos
-                ";
-                $pStmt = $pdo->prepare($sql);
-                $pStmt->execute(['cid' => $communityId, 'tid' => $tid]);
-                $pendingResidents = $pStmt->fetchAll(PDO::FETCH_ASSOC);
-            }
-
-            $missing = count($pendingResidents);
-            $rows[] = [
-                'template_id' => $tid,
-                'template_name' => (string) $tpl['name'],
-                'kind' => (string) $tpl['kind'],
-                'has_campaign' => $camp !== null,
-                'last_campaign_at' => $camp['completed_at'] ?? null,
-                'audience' => $audience,
-                'audience_label' => $this->audienceLabel($audience),
-                'eligible' => $eligible,
-                'signed' => $signed,
-                'pending' => $pending,
-                'missing' => $missing,
-                'is_complete' => $camp !== null && $eligible > 0 && $missing === 0,
-                'pending_residents' => $pendingResidents,
-            ];
-        }
-
-        return $rows;
-    }
-
-    private function audienceSqlFragment(?string $audience): string
-    {
-        return match ($audience) {
-            'owners' => ' AND r.is_owner = TRUE',
-            'presidents' => ' AND r.is_president = TRUE',
-            default => '',
-        };
-    }
-
-    private function audienceLabel(?string $audience): string
-    {
-        return match ($audience) {
-            'owners' => 'Propietarios',
-            'presidents' => 'Presidentes',
-            'both', null => 'Todos los vecinos activos',
-            default => 'Todos los vecinos activos',
-        };
-    }
-
-    private function countEligibleResidents(PDO $pdo, int $communityId, ?string $audience): int
-    {
-        $audWhere = $this->audienceSqlFragment($audience);
-        $stmt = $pdo->prepare("
-            SELECT COUNT(*) FROM community_residents r
-            WHERE r.community_id = :cid AND r.is_active = TRUE {$audWhere}
-        ");
-        $stmt->execute(['cid' => $communityId]);
-
-        return (int) $stmt->fetchColumn();
     }
 }

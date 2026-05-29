@@ -123,32 +123,6 @@
     acceptBtn.addEventListener("click", onAccept);
   });
 
-  const chartEl = document.querySelector("#cae-status-chart");
-  if (chartEl && typeof ApexCharts !== "undefined") {
-    let series = [0, 0, 0, 0, 0];
-    let labels = ["Aprobado", "En revisión", "Pendiente", "Pendiente docs.", "Rechazado"];
-
-    try {
-      series = JSON.parse(chartEl.dataset.series || "[0,0,0,0,0]");
-      labels = JSON.parse(chartEl.dataset.labels || '["Aprobado","En revisión","Pendiente","Pendiente docs.","Rechazado"]');
-    } catch (e) {
-      // keep defaults
-    }
-
-    const options = {
-      chart: { type: "donut", height: 320 },
-      series,
-      labels,
-      colors: ["#10b981", "#38bdf8", "#6b7280", "#f59e0b", "#ef4444"],
-      legend: { position: "bottom" },
-      dataLabels: { enabled: true },
-      noData: { text: "Sin datos" }
-    };
-
-    const chart = new ApexCharts(chartEl, options);
-    chart.render();
-  }
-
   // Activa pestaña bootstrap según hash (#c-tech, #pane-docs, etc.)
   const hash = window.location.hash;
   if (hash) {
@@ -239,42 +213,72 @@
     });
   }
 
-  // Sidebar: grupo desplegable CAE + persistencia localStorage
-  const sidebarToggles = document.querySelectorAll("[data-sidebar-toggle]");
+    // Sidebar: grupos desplegables CAE/RGPD + persistencia localStorage
+    const sidebarToggles = document.querySelectorAll("[data-sidebar-toggle]");
 
+    const measureSidebarGroupHeight = (target) => {
+      const hadOpen = target.classList.contains("open");
+      if (!hadOpen) {
+        target.classList.add("open");
+      }
+      const prevMax = target.style.maxHeight;
+      target.style.maxHeight = "none";
+      const height = target.scrollHeight;
+      target.style.maxHeight = prevMax;
+      if (!hadOpen) {
+        target.classList.remove("open");
+      }
+      return height;
+    };
+  
     const setSidebarGroupState = (btn, target, open) => {
       target.classList.toggle("open", open);
       target.setAttribute("data-open", open ? "1" : "0");
       btn.setAttribute("aria-expanded", open ? "true" : "false");
-
-      // max-height dinámico para que siempre cierre/abra bien
+  
       if (open) {
-        target.style.maxHeight = target.scrollHeight + "px";
+        target.style.maxHeight = measureSidebarGroupHeight(target) + "px";
       } else {
         target.style.maxHeight = "0px";
       }
     };
-
+  
+    const refreshOpenSidebarGroups = () => {
+      document.querySelectorAll(".app-nav-group.open").forEach((group) => {
+        group.style.maxHeight = measureSidebarGroupHeight(group) + "px";
+      });
+    };
+  
     sidebarToggles.forEach((btn) => {
       const targetId = btn.getAttribute("data-sidebar-toggle");
       const target = document.getElementById(targetId);
       if (!target) return;
-
+  
       const storageKey = "sidebar." + targetId + ".open";
+      const pageDefaultOpen = target.getAttribute("data-open") === "1";
       const saved = window.localStorage.getItem(storageKey);
-      const defaultOpen = target.getAttribute("data-open") === "1";
-      const shouldOpen = saved === null ? defaultOpen : saved === "1";
-
+  
+      // Sección activa: abierta al cargar. Otras: localStorage o cerrada por defecto.
+      const shouldOpen = pageDefaultOpen
+        ? true
+        : saved === "1";
+  
       setSidebarGroupState(btn, target, shouldOpen);
-
-      btn.addEventListener("click", () => {
+  
+      btn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+  
         const isOpen = target.classList.contains("open");
         const next = !isOpen;
+  
         setSidebarGroupState(btn, target, next);
         window.localStorage.setItem(storageKey, next ? "1" : "0");
+  
+        // Recalcular alturas de todos los grupos abiertos (evita bloqueo CAE -> RGPD)
+        window.requestAnimationFrame(refreshOpenSidebarGroups);
       });
-
-      // En móvil: al navegar desde subitem, colapsa grupo para UX tipo app
+  
       target.querySelectorAll(".app-sub-link").forEach((subLink) => {
         subLink.addEventListener("click", () => {
           if (window.matchMedia("(max-width: 992px)").matches) {
@@ -283,14 +287,13 @@
           }
         });
       });
-
-      // Recalcula altura al redimensionar si está abierto
-      window.addEventListener("resize", () => {
-        if (target.classList.contains("open")) {
-          target.style.maxHeight = target.scrollHeight + "px";
-        }
-      });
-  });
+    });
+  
+    window.addEventListener("resize", () => {
+      refreshOpenSidebarGroups();
+    });
+  
+    window.requestAnimationFrame(refreshOpenSidebarGroups);
 })();
 
 // ── Polling de notificaciones + recarga contextual (comunidad / RL / técnicos) ─

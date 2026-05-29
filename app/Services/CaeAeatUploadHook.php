@@ -16,16 +16,17 @@ final class CaeAeatUploadHook
 {
     /**
      * @param array<string, mixed> $appConfig resultado de config/app.php
+     * @return array<string, mixed>|null resultado del verificador, o null si no aplica
      */
-    public static function afterSupportingPdfPersisted(PDO $pdo, array $appConfig, int $caeDocumentId, int $documentTypeId, string $originalFilename): void
+    public static function afterSupportingPdfPersisted(PDO $pdo, array $appConfig, int $caeDocumentId, int $documentTypeId, string $originalFilename): ?array
     {
         if ($caeDocumentId <= 0 || $documentTypeId <= 0) {
-            return;
+            return null;
         }
 
         $ext = strtolower((string) pathinfo($originalFilename, PATHINFO_EXTENSION));
         if ($ext !== 'pdf') {
-            return;
+            return null;
         }
 
         $haciendaId = CaeReadinessService::resolveHaciendaDocumentTypeId($pdo);
@@ -37,13 +38,43 @@ final class CaeAeatUploadHook
             && in_array($documentTypeId, array_map('intval', $autoIds), true);
 
         if (!$viaHacienda && !$viaConfig) {
-            return;
+            return null;
         }
 
         try {
-            (new AeatCotejoVerifierService())->verifyDocumentById($caeDocumentId, $pdo, $appConfig);
+            return (new AeatCotejoVerifierService())->verifyDocumentById($caeDocumentId, $pdo, $appConfig);
         } catch (\Throwable $e) {
-            error_log('[CaeAeatUploadHook] ' . $e->getMessage());
+            error_log('[CaeAeatUploadHook] doc=' . $caeDocumentId . ' ' . $e->getMessage());
+            self::persistHookFailure($pdo, $caeDocumentId, $appConfig, $e->getMessage());
+
+            return ['ok' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $appConfig
+     */
+    private static function persistHookFailure(PDO $pdo, int $documentId, array $appConfig, string $message): void
+    {
+        try {
+            $useMock = !empty($appConfig['aeat_cotejo_use_mock']);
+            $stmt = $pdo->prepare('
+                UPDATE cae_documents
+                SET aeat_cotejo_used_mock = :mock,
+                    aeat_cotejo_checked_at = NOW(),
+                    aeat_cotejo_descripcion = :desc,
+                    aeat_pdf_validation_ok = FALSE,
+                    aeat_pdf_validation_errors = :errors,
+                    updated_at = NOW()
+                WHERE id = :id
+            ');
+            $stmt->bindValue(':mock', $useMock, PDO::PARAM_BOOL);
+            $stmt->bindValue(':desc', mb_substr('Error interno al comprobar Hacienda: ' . $message, 0, 2000));
+            $stmt->bindValue(':errors', json_encode([$message], JSON_UNESCAPED_UNICODE));
+            $stmt->bindValue(':id', $documentId, PDO::PARAM_INT);
+            $stmt->execute();
+        } catch (\Throwable $inner) {
+            error_log('[CaeAeatUploadHook] persistHookFailure ' . $inner->getMessage());
         }
     }
 }

@@ -273,7 +273,7 @@ final class TechnicianController extends Controller
 
         $expiresSelect = $hasExpiresAt ? 'cd.expires_at' : 'NULL::date AS expires_at';
         $aeatSelect = $hasAeatCotejo
-            ? ', cd.aeat_cotejo_codigo, cd.aeat_cotejo_huella_ok, cd.aeat_cotejo_descripcion, cd.aeat_cotejo_checked_at, cd.aeat_cotejo_used_mock'
+            ? ', cd.aeat_cotejo_codigo, cd.aeat_cotejo_huella_ok, cd.aeat_cotejo_descripcion, cd.aeat_cotejo_checked_at, cd.aeat_cotejo_used_mock, cd.aeat_pdf_validation_ok, cd.aeat_pdf_validation_errors, cd.aeat_replaced_upload'
             : '';
 
         $stmt = $pdo->prepare("
@@ -328,6 +328,7 @@ final class TechnicianController extends Controller
                     i.ai_expires_at,
                     i.ai_notes,
                     i.created_at,
+                    i.extracted_aeat_csv,
                     dt.name AS document_name
                 FROM cae_document_intake i
                 JOIN document_types dt ON dt.id = i.document_type_id

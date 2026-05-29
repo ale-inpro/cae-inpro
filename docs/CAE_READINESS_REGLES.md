@@ -69,10 +69,18 @@ Un documento complementario cuenta como **válido para generación** solo si cum
 Además de 1–3:
 
 4. Verificación AEAT completada con éxito (columnas en `cae_documents` tras `AeatCotejoVerifierService`):
-   - `aeat_cotejo_codigo = '1'`
-   - `aeat_cotejo_huella_ok = TRUE` cuando la respuesta incluye huella; en entorno mock, equivalente a huella coherente con el PDF almacenado.
+   - `aeat_cotejo_codigo = '1'` (cotejo SOAP correcto).
+   - `aeat_pdf_validation_ok = TRUE`: el **PDF oficial** devuelto por AEAT (campo `binario` decodificado) cumple:
+     - NIF/CIF del titular = `technicians.tax_id`,
+     - resultado POSITIVO / al corriente,
+     - vigencia no caducada (fecha extraída del PDF oficial; si OK, se actualiza `expires_at`).
+   - Si la validación es OK, `storage_path` apunta al PDF oficial AEAT; el escaneo queda en `aeat_upload_backup_path`.
+   - `aeat_cotejo_huella_ok` es **informativo** (comparación escaneo vs huella AEAT); **no** bloquea si difiere.
 
-Si falla extracción de CSV, cotejo ≠ 1, o huella no coincide: el documento **no** cumple la regla de generación. Mensaje orientativo al usuario: indicar que el certificado de Hacienda no es válido ante AEAT / debe subir uno válido y reintentar (detalle técnico en columnas AEAT y logs).
+5. **Subida del escaneo (solo Hacienda):** en intake solo se exige extraer (o indicar manualmente) el **CSV AEAT** de 16 caracteres. No se validan fechas ni contenido del escaneo.
+6. Tras publicar con CSV, se ejecuta AEAT; la vigencia y el resto de comprobaciones se hacen sobre el **PDF oficial** devuelto por AEAT.
+
+Si falla extracción de CSV, cotejo ≠ 1, o validación del PDF oficial: el documento **no** cumple la regla de generación.
 
 ### 4.2 Certificado de estar al corriente con **Seguridad Social**
 

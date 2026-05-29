@@ -8,6 +8,9 @@ $formError = (string) ($formError ?? '');
 $uploaded  = (int)    ($uploaded  ?? 0);
 $msg       = (string) ($msg      ?? '');
 $uploadUrl = rtrim($baseUrl, '/') . '/portal/' . $token . '/upload';
+$docStatuses  = (array)  ($docStatuses  ?? []);
+$batchSummary = (array)  ($batchSummary ?? []);
+
 ?>
 <div class="portal-card">
 
@@ -30,8 +33,9 @@ $uploadUrl = rtrim($baseUrl, '/') . '/portal/' . $token . '/upload';
         <i class="bi bi-check-circle-fill text-success" style="font-size:3.5rem"></i>
         <h2 class="h4 mt-3 mb-2">¡Documentos enviados!</h2>
         <p class="text-muted">
-            Hemos recibido <strong><?= $uploaded ?> documento(s)</strong>.
-            Si alguno requiere revisión, un administrador confirmará las fechas antes de darlo por válido.<br>
+            Hemos recibido y validado <strong>todos los documentos solicitados</strong>.
+            Ya puedes cerrar esta página.<br>
+            Gracias, <?= htmlspecialchars($techName) ?>.
         </p>
     </div>
 
@@ -52,6 +56,38 @@ $uploadUrl = rtrim($baseUrl, '/') . '/portal/' . $token . '/upload';
                 </div>
             <?php endif; ?>
 
+            <?php if (!empty($docStatuses)): ?>
+                <?php
+                    $hasIssues = false;
+                    foreach ($docStatuses as $st) {
+                        if (($st['state'] ?? '') !== 'valid') {
+                            $hasIssues = true;
+                            break;
+                        }
+                    }
+                ?>
+                <?php if ($hasIssues): ?>
+                    <div class="alert alert-warning border-0 shadow-sm">
+                        <div class="fw-semibold mb-2">
+                            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                            Hay documentos que debes corregir
+                        </div>
+                        <p class="small mb-2">
+                            El enlace sigue activo. Revisa los documentos marcados en rojo o amarillo,
+                            corrige el archivo y vuelve a enviarlo.
+                        </p>
+                        <?php if (!empty($batchSummary)): ?>
+                            <div class="small text-muted">
+                                Válidos: <?= (int) ($batchSummary['valid'] ?? 0) ?> ·
+                                No válidos: <?= (int) ($batchSummary['invalid'] ?? 0) ?> ·
+                                Sin validar: <?= (int) ($batchSummary['pending'] ?? 0) ?> ·
+                                Pendientes de subir: <?= (int) ($batchSummary['missing'] ?? 0) ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+            <?php endif; ?>
+
             <?php
             $request = $request ?? [];
             $customMsg = trim((string) ($request['custom_message'] ?? ''));
@@ -69,13 +105,48 @@ $uploadUrl = rtrim($baseUrl, '/') . '/portal/' . $token . '/upload';
 
             <form id="portal-cae-upload-form" method="post" action="<?= htmlspecialchars($uploadUrl) ?>" enctype="multipart/form-data">
                 <div class="mb-4">
-                    <?php foreach ($docs as $doc): ?>
-                        <?php $dtId = (int) ($doc['id'] ?? 0); ?>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold small">
-                                <i class="bi bi-file-earmark-text me-1 text-success"></i>
-                                <?= htmlspecialchars((string) ($doc['name'] ?? '')) ?>
+                <?php foreach ($docs as $doc): ?>
+                        <?php
+                            $dtId = (int) ($doc['id'] ?? 0);
+                            $statusRow = null;
+                            foreach ($docStatuses as $candidate) {
+                                if ((int) ($candidate['doc_type_id'] ?? 0) === $dtId) {
+                                    $statusRow = $candidate;
+                                    break;
+                                }
+                            }
+                        ?>
+                        <div class="mb-3 portal-doc-upload-row">
+                            <label class="form-label fw-semibold small d-flex align-items-center gap-2 flex-wrap">
+                                <span>
+                                    <i class="bi bi-file-earmark-text me-1 text-success"></i>
+                                    <?= htmlspecialchars((string) ($doc['name'] ?? '')) ?>
+                                </span>
+                                <?php if ($statusRow): ?>
+                                    <span class="badge rounded-pill <?= htmlspecialchars((string) ($statusRow['badge'] ?? 'text-bg-secondary'), ENT_QUOTES, 'UTF-8') ?>">
+                                        <?= htmlspecialchars((string) ($statusRow['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                                    </span>
+                                <?php endif; ?>
                             </label>
+
+                            <?php if ($statusRow && trim((string) ($statusRow['message'] ?? '')) !== ''): ?>
+                                <?php
+                                    $statusState = (string) ($statusRow['state'] ?? '');
+                                    $statusClass = match ($statusState) {
+                                        'valid' => 'text-success',
+                                        'pending' => 'text-warning',
+                                        'missing' => 'text-muted',
+                                        default => 'text-danger',
+                                    };
+                                ?>
+                                <div class="portal-doc-status small mb-2 <?= $statusClass ?>">
+                                    <?php if (($statusRow['filename'] ?? '') !== ''): ?>
+                                        <strong><?= htmlspecialchars((string) $statusRow['filename'], ENT_QUOTES, 'UTF-8') ?>:</strong>
+                                    <?php endif; ?>
+                                    <?= htmlspecialchars((string) $statusRow['message'], ENT_QUOTES, 'UTF-8') ?>
+                                </div>
+                            <?php endif; ?>
+
                             <input
                                 type="file"
                                 class="form-control"
@@ -111,7 +182,7 @@ $uploadUrl = rtrim($baseUrl, '/') . '/portal/' . $token . '/upload';
 
             <p class="text-center text-muted small mt-4 mb-0">
                 <i class="bi bi-lock me-1"></i>
-                Enlace personal · Un solo uso · Caduca en 7 días
+                Enlace personal · Permanece activo hasta que todos los documentos sean válidos · Caduca en 7 días
             </p>
         </div>
     </div>

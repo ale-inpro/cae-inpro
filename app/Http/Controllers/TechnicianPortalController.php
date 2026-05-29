@@ -11,6 +11,9 @@ use App\Services\Mailer;
 use App\Services\DocumentIntakeAiService;
 use App\Services\CaeDocumentSlotService;
 use App\Services\CaeAeatUploadHook;
+use App\Services\HaciendaDocumentIntakeService;
+use App\Services\PortalDocumentRequestStatusService;
+use App\Services\DocumentIntakePresentationService;
 
 final class TechnicianPortalController extends Controller
 {
@@ -19,6 +22,21 @@ final class TechnicianPortalController extends Controller
     {
         $token = trim((string) ($params['token'] ?? ''));
         [$state, $data] = $this->resolveToken($token);
+
+        if ($state === 'form') {
+            $request = is_array($data['request'] ?? null) ? $data['request'] : [];
+            $tid = (int) ($request['technician_id'] ?? 0);
+            $pdo = Database::connection();
+            $caeRecordId = $this->resolvePortalCaeRecordId($pdo, $request, $tid);
+            $requestedDocs = is_array($data['docs'] ?? null) ? $data['docs'] : [];
+
+            $data['docStatuses'] = PortalDocumentRequestStatusService::evaluateRequestedDocuments(
+                $pdo,
+                $caeRecordId,
+                $requestedDocs
+            );
+        }
+
         $this->renderPortal($state, array_merge($data, ['token' => $token]));
     }
 
@@ -36,13 +54,9 @@ final class TechnicianPortalController extends Controller
         $request = $data['request'];
         $tid     = (int) $request['technician_id'];
         $pdo     = Database::connection();
+        
         // Obtener o crear cae_record para vincular los docs
-        $caeRecordId = (int) ($request['cae_record_id'] ?? 0);
-        if ($caeRecordId <= 0) {
-            $stmt = $pdo->prepare("SELECT id FROM cae_records WHERE technician_id = :tid AND is_current = TRUE LIMIT 1");
-            $stmt->execute(['tid' => $tid]);
-            $caeRecordId = (int) ($stmt->fetchColumn() ?: 0);
-        }
+        $caeRecordId = $this->resolvePortalCaeRecordId($pdo, $request, $tid);
         if ($caeRecordId <= 0) {
             $ins = $pdo->prepare("
                 INSERT INTO cae_records (technician_id, status, is_current, created_at, updated_at)
@@ -51,13 +65,24 @@ final class TechnicianPortalController extends Controller
             ");
             $ins->execute(['tid' => $tid]);
             $caeRecordId = (int) $ins->fetchColumn();
+
+            $pdo->prepare("
+                UPDATE cae_document_requests
+                SET cae_record_id = :cae_id, updated_at = NOW()
+                WHERE id = :id
+            ")->execute([
+                'cae_id' => $caeRecordId,
+                'id' => (int) $request['id'],
+            ]);
         }
 
         $appCfg = $this->appConfig();
 
-        $files    = $_FILES['files'] ?? [];
-        $uploaded = 0;
-        $errors   = [];
+        $files         = $_FILES['files'] ?? [];
+        $processed     = 0;
+        $errors        = [];
+        $batchResults  = [];
+        $requestedDocs = is_array($data['docs'] ?? null) ? $data['docs'] : [];
 
         if (!empty($files['name']) && is_array($files['name'])) {
             foreach ($files['name'] as $docTypeId => $originalName) {
@@ -72,6 +97,12 @@ final class TechnicianPortalController extends Controller
                 }
                 if ($fileError !== UPLOAD_ERR_OK || !is_uploaded_file($tmpPath)) {
                     $errors[] = "Error al recibir «{$originalName}».";
+                    $batchResults[$docTypeId] = [
+                        'state' => 'error',
+                        'message' => 'No se pudo recibir el archivo. Vuelve a intentarlo.',
+                        'filename' => $originalName,
+                    ];
+                    $processed++;
                     continue;
                 }
 
@@ -84,6 +115,12 @@ final class TechnicianPortalController extends Controller
 
                 if (!move_uploaded_file($tmpPath, $dir . '/' . $safeName)) {
                     $errors[] = "No se pudo guardar «{$originalName}».";
+                    $batchResults[$docTypeId] = [
+                        'state' => 'error',
+                        'message' => 'No se pudo guardar el archivo en el servidor. Vuelve a intentarlo.',
+                        'filename' => $originalName,
+                    ];
+                    $processed++;
                     continue;
                 }
 
@@ -91,147 +128,330 @@ final class TechnicianPortalController extends Controller
                 $docTypeName = $this->resolveDocTypeName($pdo, $docTypeId);
                 if ($docTypeName === null) {
                     $errors[] = "Tipo de documento no válido para «{$originalName}».";
+                    $batchResults[$docTypeId] = [
+                        'state' => 'error',
+                        'message' => 'Tipo de documento no válido. Contacta con el administrador.',
+                        'filename' => $originalName,
+                    ];
+                    $processed++;
                     continue;
                 }
 
-                $analysis = DocumentIntakeAiService::analyze($dir . '/' . $safeName, $mimeType, $docTypeName);
-                $aiStatus = (string) ($analysis['status'] ?? 'manual_review');
-                $confidence = (float) ($analysis['confidence'] ?? 0.0);
-                $issueDate = (string) ($analysis['issue_date'] ?? '');
-                $expiresAt = (string) ($analysis['expires_at'] ?? '');
-                $notes = (string) ($analysis['notes'] ?? '');
-                $extractedText = (string) ($analysis['extracted_text'] ?? '');
+                $fullPath = $dir . '/' . $safeName;
+                $isHaciendaDoc = HaciendaDocumentIntakeService::isHaciendaDocumentTypeName($docTypeName);
 
-                $issueDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $issueDate) ? $issueDate : null;
-                $expiresAt = preg_match('/^\d{4}-\d{2}-\d{2}$/', $expiresAt) ? $expiresAt : null;
-                if ($expiresAt === null) {
-                    $expiresAt = $this->autoExpireFromIssue($docTypeName, $issueDate);
-                }
+                if ($isHaciendaDoc) {
+                    $haciendaIntake = new HaciendaDocumentIntakeService();
+                    $csvEval = $haciendaIntake->evaluateUploadedPdf($fullPath);
+                    $detectedCsv = $csvEval['csv'];
+                    $needsManual = (bool) $csvEval['needs_manual'];
 
-                // Estado calculado por PHP (fechas reales), no por la IA
-                $aiStatus = DocumentIntakeAiService::calcStatus($expiresAt, $issueDate);
+                    $pdo->prepare("
+                        INSERT INTO cae_document_intake
+                        (technician_id, cae_record_id, document_type_id, original_filename, storage_path, mime_type, file_size,
+                        source_channel, uploaded_by_user_id, extracted_text, ai_status, ai_confidence, ai_issue_date, ai_expires_at, ai_notes,
+                        extracted_aeat_csv, status, requires_manual_review, created_at, updated_at)
+                        VALUES
+                        (:technician_id, :cae_record_id, :document_type_id, :original_filename, :storage_path, :mime_type, :file_size,
+                        'portal_upload', NULL, NULL, :ai_status, NULL, NULL, NULL, :ai_notes,
+                        :extracted_aeat_csv, :status, :requires_manual_review, NOW(), NOW())
+                    ")->execute([
+                        'technician_id' => $tid,
+                        'cae_record_id' => $caeRecordId,
+                        'document_type_id' => $docTypeId,
+                        'original_filename' => $originalName,
+                        'storage_path' => $storagePath,
+                        'mime_type' => $mimeType,
+                        'file_size' => $fileSize,
+                        'ai_status' => $needsManual ? 'manual_review' : 'approved',
+                        'ai_notes' => (string) $csvEval['notes'],
+                        'extracted_aeat_csv' => $detectedCsv,
+                        'status' => $needsManual ? 'pending_manual' : 'approved_auto',
+                        'requires_manual_review' => $needsManual ? 'true' : 'false',
+                    ]);
 
-                $needsManual = ($aiStatus === 'manual_review' || $expiresAt === null);
+                    if ($needsManual) {
+                        $batchResults[$docTypeId] = [
+                            'state' => 'pending',
+                            'message' => PortalDocumentRequestStatusService::portalIntakeMessage(
+                                $docTypeName,
+                                (string) $csvEval['notes']
+                            ),
+                            'filename' => $originalName,
+                        ];
+                        $processed++;
+                        continue;
+                    }
 
-                $pdo->prepare("
-                    INSERT INTO cae_document_intake
-                    (technician_id, cae_record_id, document_type_id, original_filename, storage_path, mime_type, file_size,
-                    source_channel, uploaded_by_user_id, extracted_text, ai_status, ai_confidence, ai_issue_date, ai_expires_at, ai_notes,
-                    status, requires_manual_review, created_at, updated_at)
-                    VALUES
-                    (:technician_id, :cae_record_id, :document_type_id, :original_filename, :storage_path, :mime_type, :file_size,
-                    'portal_upload', NULL, :extracted_text, :ai_status, :ai_confidence, :ai_issue_date, :ai_expires_at, :ai_notes,
-                    :status, :requires_manual_review, NOW(), NOW())
-                ")->execute([
-                    'technician_id' => $tid,
-                    'cae_record_id' => $caeRecordId,
-                    'document_type_id' => $docTypeId,
-                    'original_filename' => $originalName,
-                    'storage_path' => $storagePath,
-                    'mime_type' => $mimeType,
-                    'file_size' => $fileSize,
-                    'extracted_text' => $extractedText !== '' ? $extractedText : null,
-                    'ai_status' => in_array($aiStatus, ['approved', 'in_review', 'rejected', 'manual_review'], true) ? $aiStatus : 'manual_review',
-                    'ai_confidence' => $confidence,
-                    'ai_issue_date' => $issueDate,
-                    'ai_expires_at' => $expiresAt,
-                    'ai_notes' => $notes !== '' ? $notes : null,
-                    'status' => $needsManual ? 'pending_manual' : 'approved_auto',
-                    'requires_manual_review' => $needsManual ? 'true' : 'false',
-                ]);
-
-                if (!$needsManual) {
-                    try {
-                        $newDocId = (int) CaeDocumentSlotService::replaceActiveSupportingSlot(
-                            $pdo,
-                            $caeRecordId,
-                            $docTypeId,
-                            function () use (
+                    if (!$needsManual && $detectedCsv !== null) {
+                        try {
+                            $newDocId = (int) CaeDocumentSlotService::replaceActiveSupportingSlot(
                                 $pdo,
                                 $caeRecordId,
                                 $docTypeId,
-                                $originalName,
-                                $storagePath,
-                                $mimeType,
-                                $fileSize,
-                                $expiresAt
-                            ): int {
-                                $pdo->prepare("
-                        INSERT INTO cae_documents
-                        (cae_record_id, document_type_id, original_filename, storage_path,
-                        mime_type, file_size, uploaded_by_user_id,
-                        uploaded_at, is_active, is_cae_file, expires_at, created_at, updated_at)
+                                function () use (
+                                    $pdo,
+                                    $caeRecordId,
+                                    $docTypeId,
+                                    $originalName,
+                                    $storagePath,
+                                    $mimeType,
+                                    $fileSize,
+                                    $detectedCsv
+                                ): int {
+                                    $pdo->prepare("
+                                        INSERT INTO cae_documents
+                                        (cae_record_id, document_type_id, original_filename, storage_path,
+                                        mime_type, file_size, uploaded_by_user_id,
+                                        uploaded_at, is_active, is_cae_file, expires_at, extracted_aeat_csv, created_at, updated_at)
+                                        VALUES
+                                        (:cae_id, :dtype, :orig, :path,
+                                        :mime, :size, NULL,
+                                        NOW(), TRUE, FALSE, NULL, :extracted_aeat_csv, NOW(), NOW())
+                                    ")->execute([
+                                        'cae_id' => $caeRecordId,
+                                        'dtype' => $docTypeId,
+                                        'orig' => $originalName,
+                                        'path' => $storagePath,
+                                        'mime' => $mimeType,
+                                        'size' => $fileSize,
+                                        'extracted_aeat_csv' => $detectedCsv,
+                                    ]);
+                                    return (int) $pdo->lastInsertId();
+                                }
+                            );
+                            CaeAeatUploadHook::afterSupportingPdfPersisted(
+                                $pdo,
+                                $appCfg,
+                                $newDocId,
+                                $docTypeId,
+                                $originalName
+                            );
+                            $check = PortalDocumentRequestStatusService::evaluatePublishedDocument($pdo, $newDocId);
+                            $batchResults[$docTypeId] = [
+                                'state' => $check['valid'] ? 'valid' : 'invalid',
+                                'message' => $check['message'],
+                                'filename' => $originalName,
+                            ];
+                        } catch (\Throwable $e) {
+                            error_log('[TechnicianPortalController::upload] slot ' . $e->getMessage());
+                            $failMsg = 'No se pudo publicar el certificado de Hacienda. Inténtelo de nuevo o contacte al administrador.';
+                            $this->markLatestPortalIntakePublishFailed($pdo, $caeRecordId, $docTypeId, $failMsg);
+                            $batchResults[$docTypeId] = [
+                                'state' => 'error',
+                                'message' => $failMsg,
+                                'filename' => $originalName,
+                            ];
+                            $processed++;
+                            continue;
+                        }
+                    }
+                } else {
+                    $analysis = DocumentIntakeAiService::analyze($fullPath, $mimeType, $docTypeName);
+                    $aiStatus = (string) ($analysis['status'] ?? 'manual_review');
+                    $confidence = (float) ($analysis['confidence'] ?? 0.0);
+                    $issueDate = (string) ($analysis['issue_date'] ?? '');
+                    $expiresAt = (string) ($analysis['expires_at'] ?? '');
+                    $notes = (string) ($analysis['notes'] ?? '');
+                    $extractedText = (string) ($analysis['extracted_text'] ?? '');
+
+                    $issueDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $issueDate) ? $issueDate : null;
+                    $expiresAt = preg_match('/^\d{4}-\d{2}-\d{2}$/', $expiresAt) ? $expiresAt : null;
+                    if ($expiresAt === null) {
+                        $expiresAt = $this->autoExpireFromIssue($docTypeName, $issueDate);
+                    }
+
+                    $aiStatus = DocumentIntakeAiService::calcStatus($expiresAt, $issueDate);
+
+                    $needsManual = ($aiStatus === 'manual_review' || $expiresAt === null);
+
+                    $pdo->prepare("
+                        INSERT INTO cae_document_intake
+                        (technician_id, cae_record_id, document_type_id, original_filename, storage_path, mime_type, file_size,
+                        source_channel, uploaded_by_user_id, extracted_text, ai_status, ai_confidence, ai_issue_date, ai_expires_at, ai_notes,
+                        status, requires_manual_review, created_at, updated_at)
                         VALUES
-                        (:cae_id, :dtype, :orig, :path,
-                        :mime, :size, NULL,
-                        NOW(), TRUE, FALSE, :expires_at, NOW(), NOW())
+                        (:technician_id, :cae_record_id, :document_type_id, :original_filename, :storage_path, :mime_type, :file_size,
+                        'portal_upload', NULL, :extracted_text, :ai_status, :ai_confidence, :ai_issue_date, :ai_expires_at, :ai_notes,
+                        :status, :requires_manual_review, NOW(), NOW())
                     ")->execute([
-                                    'cae_id' => $caeRecordId,
-                                    'dtype' => $docTypeId,
-                                    'orig' => $originalName,
-                                    'path' => $storagePath,
-                                    'mime' => $mimeType,
-                                    'size' => $fileSize,
-                                    'expires_at' => $expiresAt,
-                                ]);
-                                return (int) $pdo->lastInsertId();
-                            }
-                        );
-                        CaeAeatUploadHook::afterSupportingPdfPersisted(
-                            $pdo,
-                            $appCfg,
-                            $newDocId,
-                            $docTypeId,
-                            $originalName
-                        );
-                    } catch (\Throwable $e) {
-                        error_log('[TechnicianPortalController::upload] slot ' . $e->getMessage());
-                        $errors[] = 'No se pudo publicar el documento complementario para «'
-                            . $originalName
-                            . '». Inténtelo de nuevo o contacte al administrador.';
+                        'technician_id' => $tid,
+                        'cae_record_id' => $caeRecordId,
+                        'document_type_id' => $docTypeId,
+                        'original_filename' => $originalName,
+                        'storage_path' => $storagePath,
+                        'mime_type' => $mimeType,
+                        'file_size' => $fileSize,
+                        'extracted_text' => $extractedText !== '' ? $extractedText : null,
+                        'ai_status' => in_array($aiStatus, ['approved', 'in_review', 'rejected', 'manual_review'], true) ? $aiStatus : 'manual_review',
+                        'ai_confidence' => $confidence,
+                        'ai_issue_date' => $issueDate,
+                        'ai_expires_at' => $expiresAt,
+                        'ai_notes' => $notes !== '' ? $notes : null,
+                        'status' => $needsManual ? 'pending_manual' : 'approved_auto',
+                        'requires_manual_review' => $needsManual ? 'true' : 'false',
+                    ]);
+
+                    if ($needsManual) {
+                        $present = DocumentIntakePresentationService::presentPendingIntake([
+                            'ai_status' => $aiStatus,
+                            'ai_confidence' => $confidence,
+                            'ai_expires_at' => $expiresAt,
+                            'ai_notes' => $notes,
+                        ]);
+                        $batchResults[$docTypeId] = [
+                            'state' => 'pending',
+                            'message' => PortalDocumentRequestStatusService::portalIntakeMessage(
+                                $docTypeName,
+                                (string) ($present['reason'] ?? '')
+                            ),
+                            'filename' => $originalName,
+                        ];
+                        $processed++;
                         continue;
                     }
+
+                    try {
+                            $newDocId = (int) CaeDocumentSlotService::replaceActiveSupportingSlot(
+                                $pdo,
+                                $caeRecordId,
+                                $docTypeId,
+                                function () use (
+                                    $pdo,
+                                    $caeRecordId,
+                                    $docTypeId,
+                                    $originalName,
+                                    $storagePath,
+                                    $mimeType,
+                                    $fileSize,
+                                    $expiresAt
+                                ): int {
+                                    $pdo->prepare("
+                                        INSERT INTO cae_documents
+                                        (cae_record_id, document_type_id, original_filename, storage_path,
+                                        mime_type, file_size, uploaded_by_user_id,
+                                        uploaded_at, is_active, is_cae_file, expires_at, created_at, updated_at)
+                                        VALUES
+                                        (:cae_id, :dtype, :orig, :path,
+                                        :mime, :size, NULL,
+                                        NOW(), TRUE, FALSE, :expires_at, NOW(), NOW())
+                                    ")->execute([
+                                        'cae_id' => $caeRecordId,
+                                        'dtype' => $docTypeId,
+                                        'orig' => $originalName,
+                                        'path' => $storagePath,
+                                        'mime' => $mimeType,
+                                        'size' => $fileSize,
+                                        'expires_at' => $expiresAt,
+                                    ]);
+                                    return (int) $pdo->lastInsertId();
+                                }
+                            );
+                            CaeAeatUploadHook::afterSupportingPdfPersisted(
+                                $pdo,
+                                $appCfg,
+                                $newDocId,
+                                $docTypeId,
+                                $originalName
+                            );
+                            $check = PortalDocumentRequestStatusService::evaluatePublishedDocument($pdo, $newDocId);
+                            $batchResults[$docTypeId] = [
+                                'state' => $check['valid'] ? 'valid' : 'invalid',
+                                'message' => $check['message'],
+                                'filename' => $originalName,
+                            ];
+                        } catch (\Throwable $e) {
+                            error_log('[TechnicianPortalController::upload] slot ' . $e->getMessage());
+                            $failMsg = 'No se pudo publicar el documento. Inténtelo de nuevo o contacte al administrador.';
+                            $this->markLatestPortalIntakePublishFailed($pdo, $caeRecordId, $docTypeId, $failMsg);
+                            $batchResults[$docTypeId] = [
+                                'state' => 'error',
+                                'message' => $failMsg,
+                                'filename' => $originalName,
+                            ];
+                            $processed++;
+                            continue;
+                        }
                 }
 
-                $uploaded++;
+                if (!isset($batchResults[$docTypeId])) {
+                    $batchResults[$docTypeId] = [
+                        'state' => 'error',
+                        'message' => 'No se pudo procesar el archivo.',
+                        'filename' => $originalName,
+                    ];
+                }
+                $processed++;
             }
         }
 
-        if ($uploaded === 0) {
+        if ($processed === 0) {
             $this->renderPortal('form', array_merge($data, [
                 'token'     => $token,
                 'formError' => empty($errors)
                     ? 'No se recibió ningún archivo. Sube al menos un documento.'
                     : implode(' ', $errors),
+                'docStatuses' => PortalDocumentRequestStatusService::evaluateRequestedDocuments(
+                    $pdo,
+                    $caeRecordId,
+                    $requestedDocs
+                ),
             ]));
             return;
         }
 
-        // Marcar token como usado
-        $pdo->prepare("UPDATE cae_document_requests SET token_used_at = NOW(), updated_at = NOW() WHERE id = :id")
-            ->execute(['id' => (int) $request['id']]);
+        $docStatuses = PortalDocumentRequestStatusService::evaluateRequestedDocuments(
+            $pdo,
+            $caeRecordId,
+            $requestedDocs,
+            $batchResults
+        );
+        $allValid = PortalDocumentRequestStatusService::allRequestedAreValid($docStatuses);
+        $summary  = PortalDocumentRequestStatusService::summarize($docStatuses);
 
-        // Notificar admins en la app
         $techName = trim((string) ($request['display_name'] ?? ''));
-        $admins   = $pdo->query("SELECT id FROM users WHERE role = 'admin' LIMIT 10")->fetchAll(PDO::FETCH_COLUMN);
+        $requestId = (int) $request['id'];
+
+        // Notificar admins en cada intento con archivos
+        $admins = $pdo->query("SELECT id FROM users WHERE role = 'admin' LIMIT 10")->fetchAll(PDO::FETCH_COLUMN);
         foreach ($admins as $adminId) {
             $this->createNotification(
                 (int) $adminId,
                 'cae_docs_uploaded',
-                'Documentos CAE recibidos',
-                "El técnico {$techName} ha subido {$uploaded} documento(s) a través del portal.",
+                $allValid ? 'Documentos CAE completados' : 'Documentos CAE recibidos (revisar)',
+                $allValid
+                    ? "El técnico {$techName} ha completado todos los documentos solicitados por el portal."
+                    : "El técnico {$techName} ha subido documentos por el portal. Algunos requieren corrección o revisión.",
                 ['technician_id' => $tid, 'cae_record_id' => $caeRecordId]
             );
         }
 
-        // Email al admin
+        if (!$allValid) {
+            $this->renderPortal('form', array_merge($data, [
+                'token'       => $token,
+                'docStatuses' => $docStatuses,
+                'batchSummary'=> $summary,
+                'formError'   => empty($errors) ? '' : implode(' ', $errors),
+            ]));
+            return;
+        }
+
+        $pdo->prepare("
+            UPDATE cae_document_requests
+            SET token_used_at = NOW(),
+                status = 'completed',
+                completed_at = NOW(),
+                updated_at = NOW()
+            WHERE id = :id
+        ")->execute(['id' => $requestId]);
+
         $adminEmail = (string) ($pdo->query("SELECT email FROM users WHERE role = 'admin' LIMIT 1")->fetchColumn() ?: '');
         if ($adminEmail !== '') {
             $adminLink = $this->baseUrl() . '/admin/tecnicos/' . $tid . '#pane-docs';
             $bodyHtml  = "
                 <h2>Documentos CAE recibidos</h2>
-                <p>El técnico <strong>" . htmlspecialchars($techName) . "</strong> ha subido
-                   <strong>{$uploaded}</strong> documento(s) a través del portal.</p>
+                <p>El técnico <strong>" . htmlspecialchars($techName) . "</strong> ha completado
+                   la documentación solicitada por el portal.</p>
                 <p><a href='" . htmlspecialchars($adminLink) . "' style='color:#059669'>Ver documentos del técnico →</a></p>
             ";
             Mailer::send(
@@ -243,7 +463,7 @@ final class TechnicianPortalController extends Controller
 
         $this->renderPortal('success', [
             'token'    => $token,
-            'uploaded' => $uploaded,
+            'uploaded' => count($docStatuses),
             'techName' => $techName,
         ]);
     }
@@ -335,5 +555,66 @@ final class TechnicianPortalController extends Controller
                 => null,
             default => null,
         };
+    }
+
+    /**
+     * Misma resolución de CAE record que en upload(), para evaluar estados en GET.
+     *
+     * @param array<string, mixed> $request
+     */
+    private function resolvePortalCaeRecordId(PDO $pdo, array $request, int $technicianId): int
+    {
+        $caeRecordId = (int) ($request['cae_record_id'] ?? 0);
+        if ($caeRecordId > 0) {
+            return $caeRecordId;
+        }
+
+        if ($technicianId <= 0) {
+            return 0;
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT id
+            FROM cae_records
+            WHERE technician_id = :tid
+            AND is_current = TRUE
+            LIMIT 1
+        ");
+        $stmt->execute(['tid' => $technicianId]);
+
+        return (int) ($stmt->fetchColumn() ?: 0);
+    }
+
+    private function markLatestPortalIntakePublishFailed(
+        PDO $pdo,
+        int $caeRecordId,
+        int $documentTypeId,
+        string $message
+    ): void {
+        try {
+            $pdo->prepare("
+                UPDATE cae_document_intake
+                SET status = 'pending_manual',
+                    ai_status = 'manual_review',
+                    requires_manual_review = TRUE,
+                    ai_notes = :notes,
+                    updated_at = NOW()
+                WHERE id = (
+                    SELECT id
+                    FROM cae_document_intake
+                    WHERE cae_record_id = :cae_id
+                      AND document_type_id = :dtype
+                      AND source_channel = 'portal_upload'
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                )
+            ")->execute([
+                'notes' => $message,
+                'cae_id' => $caeRecordId,
+                'dtype' => $documentTypeId,
+            ]);
+        } catch (\Throwable $e) {
+            error_log('[TechnicianPortalController::markLatestPortalIntakePublishFailed] ' . $e->getMessage());
+        }
     }
 }

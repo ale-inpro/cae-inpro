@@ -31,7 +31,8 @@ final class RgpdContractController extends Controller
                 rc.expires_at,
                 rc.storage_path,
                 rc.signed_on_paper,
-                rc.original_filename
+                rc.original_filename,
+                rc.paper_notes
             FROM communities c
             LEFT JOIN LATERAL (
                 SELECT * FROM community_rgpd_contracts x
@@ -177,11 +178,11 @@ final class RgpdContractController extends Controller
         $defaultCommunity = $ab . '/rgpd/comunidades/' . $communityId . '#rgpd-documentos';
 
         if ($returnTo === '') {
-            return $defaultCommunity;
+            return $ab . '/rgpd/contratos';
         }
 
         if (!str_starts_with($returnTo, $ab . '/rgpd/')) {
-            return $defaultCommunity;
+            return $ab . '/rgpd/contratos';
         }
 
         return $returnTo;

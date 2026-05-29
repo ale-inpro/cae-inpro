@@ -15,7 +15,7 @@ $contractLabel = static function (string $st): string {
 <div class="page-header mb-4">
     <div>
         <h1 class="h3 page-title mb-1">Comunidades · RGPD</h1>
-        <p class="page-meta mb-0">Vecinos, consentimientos y contrato marco por comunidad.</p>
+        <p class="page-meta mb-0">Vecinos, consentimientos y encargo de tratamiento RGPD por comunidad</p>
     </div>
 </div>
 

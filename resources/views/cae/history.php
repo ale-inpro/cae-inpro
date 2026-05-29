@@ -153,7 +153,7 @@ $statusBadge = static function (string $status): string {
                                     <label class="form-label fw-semibold mb-2">Documentación que usará la IA</label>
                                     <p class="small text-muted mb-3">
                                     Se cargan automáticamente los complementarios activos del CAE vigente.
-                                    Para generar con IA son obligatorios <strong>Hacienda, Seguridad Social y Póliza de Responsabilidad Civil</strong> (vigentes y, en Hacienda, verificación AEAT).
+                                    Para generar con IA son obligatorios <strong>Hacienda, Seguridad Social y Póliza de Responsabilidad Civil</strong> (vigentes; Hacienda se comprueba automáticamente al publicar).
                                     </p>
                                     <?php if (empty($existingCaeDocs)): ?>
                                         <p class="small text-muted">No hay complementarios en este CAE vigente.</p>
@@ -161,29 +161,18 @@ $statusBadge = static function (string $status): string {
                                         <div id="cae-ai-doc-list" class="doc-chips-wrap mb-3 flex-column align-items-stretch gap-2">
                                             <?php foreach ($existingCaeDocs as $d): ?>
                                                 <?php
-                                                    $csv = isset($d['extracted_aeat_csv']) ? trim((string) $d['extracted_aeat_csv']) : '';
-                                                    $aeCod = isset($d['aeat_cotejo_codigo']) && $d['aeat_cotejo_codigo'] !== null && $d['aeat_cotejo_codigo'] !== ''
-                                                        ? (string) $d['aeat_cotejo_codigo'] : '';
-                                                    $aeHu = isset($d['aeat_cotejo_huella_ok']) ? $d['aeat_cotejo_huella_ok'] : null;
-                                                    $aeMock = !empty($d['aeat_cotejo_used_mock']);
                                                     $aeAt = isset($d['aeat_cotejo_checked_at']) ? trim((string) $d['aeat_cotejo_checked_at']) : '';
-                                                    $aeDesc = isset($d['aeat_cotejo_descripcion']) ? trim((string) $d['aeat_cotejo_descripcion']) : '';
+                                                    $aeMock = !empty($d['aeat_cotejo_used_mock']);
+                                                    $docId = (int) ($d['id'] ?? 0);
+                                                    $isHaciendaDoc = trim((string) ($d['document_name'] ?? '')) === \App\Services\CaeReadinessService::DOCUMENT_TYPE_NAME_HACIENDA;
                                                 ?>
                                                 <div class="border rounded px-3 py-2 small d-flex justify-content-between align-items-start gap-2 flex-wrap">
-                                                    <div class="min-w-0">
+                                                    <div class="min-w-0 flex-grow-1">
                                                         <div class="fw-semibold text-truncate" title="<?= htmlspecialchars((string) ($d['original_filename'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
                                                             <i class="bi bi-file-earmark me-1"></i><?= htmlspecialchars((string) ($d['original_filename'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
                                                         </div>
                                                         <div class="doc-chip-meta d-flex flex-wrap align-items-center gap-1 mt-1">
-                                                            <?php if ($csv !== ''): ?>
-                                                                <span class="badge rounded-pill text-bg-secondary">CSV</span>
-                                                            <?php endif; ?>
-                                                            <?php if ($aeCod !== ''): ?>
-                                                                <span class="badge rounded-pill <?= $aeHu ? 'text-bg-success' : 'text-bg-warning text-dark' ?>" title="<?= htmlspecialchars($aeDesc, ENT_QUOTES, 'UTF-8') ?>">Hacienda <?= htmlspecialchars($aeCod, ENT_QUOTES, 'UTF-8') ?></span>
-                                                            <?php elseif ($aeAt !== '' && $aeDesc !== ''): ?>
-                                                                <span class="badge rounded-pill text-bg-light text-dark border" title="<?= htmlspecialchars($aeDesc, ENT_QUOTES, 'UTF-8') ?>">Hacienda</span>
-                                                            <?php endif; ?>
-                                                            <?php if ($aeatCotejoUseMock && $aeMock && ($aeAt !== '' || $aeCod !== '')): ?>
+                                                            <?php if ($aeatCotejoUseMock && $aeMock && $aeAt !== ''): ?>
                                                                 <span class="badge rounded-pill text-bg-light text-dark border" title="Entorno de prueba">Prueba</span>
                                                             <?php endif; ?>
                                                             <?php
@@ -213,6 +202,16 @@ $statusBadge = static function (string $status): string {
                                                             <?php endif; ?>
                                                         </div>
                                                     </div>
+                                                    <?php if ($isHaciendaDoc && $docId > 0): ?>
+                                                        <form method="post"
+                                                            action="<?= htmlspecialchars($ab . '/cae/documentos/' . $docId . '/verify-aeat', ENT_QUOTES, 'UTF-8') ?>"
+                                                            class="flex-shrink-0">
+                                                            <input type="hidden" name="return_to" value="<?= htmlspecialchars($returnToForm, ENT_QUOTES, 'UTF-8') ?>">
+                                                            <button type="submit" class="btn btn-sm btn-outline-primary" title="Comprobar certificado de Hacienda con el CSV">
+                                                                <i class="bi bi-shield-check me-1"></i><?= $aeAt === '' ? 'Comprobar certificado' : 'Volver a comprobar' ?>
+                                                            </button>
+                                                        </form>
+                                                    <?php endif; ?>
                                                 </div>
                                             <?php endforeach; ?>
                                         </div>

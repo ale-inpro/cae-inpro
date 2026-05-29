@@ -150,11 +150,13 @@ final class CaeReadinessService
             $expiresRaw = $row['expires_at'] ?? null;
             $expiresAt = is_string($expiresRaw) ? trim($expiresRaw) : null;
             if ($expiresAt === null || $expiresAt === '') {
-                $entry['ok'] = false;
-                $entry['codes'][] = 'expiry_missing';
-                $msg = 'El documento «' . $typeName . '» no tiene fecha de caducidad registrada.';
-                $entry['messages'][] = $msg;
-                $reasons[] = $msg;
+                if ($typeName !== self::HACIENDA_NAME) {
+                    $entry['ok'] = false;
+                    $entry['codes'][] = 'expiry_missing';
+                    $msg = 'El documento «' . $typeName . '» no tiene fecha de caducidad registrada.';
+                    $entry['messages'][] = $msg;
+                    $reasons[] = $msg;
+                }
             } else {
                 $today = new \DateTimeImmutable('today');
                 $exp = \DateTimeImmutable::createFromFormat('Y-m-d', substr($expiresAt, 0, 10));
@@ -187,20 +189,23 @@ final class CaeReadinessService
                 }
             }
 
-            if ($typeName === self::HACIENDA_NAME && $entry['ok']) {
+            if ($typeName === self::HACIENDA_NAME) {
                 if (!$hasAeatCols) {
                     $entry['ok'] = false;
                     $entry['codes'][] = 'aeat_schema_missing';
-                    $msg = 'No se pueden comprobar datos AEAT: ejecuta database/migrations/2026_05_14_cae_documents_aeat_cotejo.sql.';
+                    $msg = 'No se puede comprobar el certificado de Hacienda (falta configuración en base de datos).';
                     $entry['messages'][] = $msg;
                     $reasons[] = $msg;
                 } else {
                     $codigo = isset($row['aeat_cotejo_codigo']) ? trim((string) $row['aeat_cotejo_codigo']) : '';
-                    $huellaOk = $this->dbBoolIsTrue($row['aeat_cotejo_huella_ok'] ?? null);
-                    if ($codigo !== '1' || !$huellaOk) {
+                    $pdfOk = $this->dbBoolIsTrue($row['aeat_pdf_validation_ok'] ?? null);
+                    $aeatChecked = trim((string) ($row['aeat_cotejo_checked_at'] ?? ''));
+                    if ($codigo !== '1' || !$pdfOk) {
                         $entry['ok'] = false;
                         $entry['codes'][] = 'aeat_failed';
-                        $msg = 'El certificado de Hacienda no supera la verificación AEAT (CSV/cotejo o huella). Sube un certificado válido o espera a la verificación automática al publicar el documento.';
+                        $msg = $aeatChecked === ''
+                            ? 'El certificado de Hacienda está pendiente de comprobación.'
+                            : 'El certificado de Hacienda no es válido para generar el CAE.';
                         $entry['messages'][] = $msg;
                         $reasons[] = $msg;
                     }
@@ -316,7 +321,7 @@ final class CaeReadinessService
     private function loadActiveSupportingDocs(PDO $pdo, int $caeRecordId, bool $includeAeat): array
     {
         $aeatCols = $includeAeat
-            ? ', cd.aeat_cotejo_codigo, cd.aeat_cotejo_huella_ok'
+            ? ', cd.aeat_cotejo_codigo, cd.aeat_cotejo_huella_ok, cd.aeat_pdf_validation_ok, cd.aeat_cotejo_checked_at'
             : '';
 
         $stmt = $pdo->prepare("

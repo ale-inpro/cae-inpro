@@ -59,6 +59,7 @@ return [
         ['method' => 'PUT', 'path' => '/admin/cae/{id}', 'action' => [CaeController::class, 'update']],
         ['method' => 'DELETE', 'path' => '/admin/cae/{id}', 'action' => [CaeController::class, 'destroy']],
         ['method' => 'POST', 'path' => '/admin/cae/{id}/documentos', 'action' => [CaeController::class, 'uploadDocument']],
+        ['method' => 'POST', 'path' => '/admin/cae/{id}/documentos/hacienda-csv', 'action' => [CaeController::class, 'fetchHaciendaByCsv']],
         ['method' => 'DELETE', 'path' => '/admin/cae/documentos/{documentId}', 'action' => [CaeController::class, 'deleteDocument']],
 
         ['method' => 'GET', 'path' => '/admin/comunidades', 'action' => [CommunityController::class, 'index']],

@@ -39,6 +39,44 @@ final class CaeDocumentValidityService
         $messages = [];
 
         $expiresRaw = isset($row['expires_at']) ? trim((string) $row['expires_at']) : '';
+
+        if ($expiresRaw === '' && $isHacienda) {
+            if (!$hasAeatColumns) {
+                $codes[] = 'aeat_schema_missing';
+                $msg = 'No se puede comprobar el certificado de Hacienda (falta configuración en base de datos).';
+                return self::pack(false, 'No válido', $codes, [$msg], [$msg]);
+            }
+
+            $codigo = trim((string) ($row['aeat_cotejo_codigo'] ?? ''));
+            $pdfOk = self::dbBoolIsTrue($row['aeat_pdf_validation_ok'] ?? null);
+            $validationErrors = AeatHaciendaOfficialPdfValidator::decodeErrorsJson(
+                isset($row['aeat_pdf_validation_errors']) ? (string) $row['aeat_pdf_validation_errors'] : null
+            );
+            $aeAt = trim((string) ($row['aeat_cotejo_checked_at'] ?? ''));
+
+            if ($aeAt === '') {
+                $codes[] = 'hacienda_pending';
+                $msg = 'Pendiente de comprobación del certificado de Hacienda.';
+                return self::pack(false, 'No válido', $codes, [$msg], [$msg]);
+            }
+
+            if ($codigo !== '1') {
+                $codes[] = 'hacienda_cotejo_failed';
+                $msg = 'No se ha podido obtener el certificado de Hacienda.';
+                return self::pack(false, 'No válido', $codes, [$msg], [$msg]);
+            }
+
+            if (!$pdfOk) {
+                $codes[] = 'hacienda_invalid';
+                $msg = self::humanizeHaciendaError($validationErrors)
+                    ?? 'El certificado de Hacienda no cumple los requisitos.';
+                return self::pack(false, 'No válido', $codes, [$msg], [$msg]);
+            }
+
+            $msg = 'Sin fecha de caducidad registrada para este documento.';
+            return self::pack(false, 'No válido', ['expiry_missing'], [$msg], [$msg]);
+        }
+
         if ($expiresRaw === '') {
             $codes[] = 'expiry_missing';
             $msg = 'Sin fecha de caducidad registrada para este documento.';
@@ -92,52 +130,41 @@ final class CaeDocumentValidityService
         if ($isHacienda) {
             if (!$hasAeatColumns) {
                 $codes[] = 'aeat_schema_missing';
-                $msg = 'No se pueden comprobar datos AEAT en base de datos (falta migración o columnas).';
-                $messages[] = $msg;
-
-                return self::pack(false, 'No válido', $codes, $messages, [$msg, $vigenciaCtx]);
+                $msg = 'No se puede comprobar el certificado de Hacienda (falta configuración en base de datos).';
+                return self::pack(false, 'No válido', $codes, [$msg], [$msg, $vigenciaCtx]);
             }
 
             $codigo = trim((string) ($row['aeat_cotejo_codigo'] ?? ''));
-            $huellaOk = self::dbBoolIsTrue($row['aeat_cotejo_huella_ok'] ?? null);
-            $aeDesc = trim((string) ($row['aeat_cotejo_descripcion'] ?? ''));
+            $pdfOk = self::dbBoolIsTrue($row['aeat_pdf_validation_ok'] ?? null);
+            $validationErrors = AeatHaciendaOfficialPdfValidator::decodeErrorsJson(
+                isset($row['aeat_pdf_validation_errors']) ? (string) $row['aeat_pdf_validation_errors'] : null
+            );
             $aeAt = trim((string) ($row['aeat_cotejo_checked_at'] ?? ''));
-            $mock = !empty($row['aeat_cotejo_used_mock']);
 
-            if ($codigo !== '1' || !$huellaOk) {
-                $codes[] = 'aeat_failed';
-                $msg = 'Certificado de Hacienda: la verificación AEAT (CSV/cotejo o huella del PDF) no se ha superado.';
-                $messages[] = $msg;
-                $detail = [$msg, $vigenciaCtx];
-                $aeLine = 'AEAT: código ' . ($codigo !== '' ? $codigo : '—')
-                    . ($aeDesc !== '' ? ' — ' . $aeDesc : '');
-                if ($aeLine !== 'AEAT: código —') {
-                    $detail[] = $aeLine;
-                }
-                if ($aeAt !== '') {
-                    $detail[] = 'Última comprobación AEAT: ' . DateDisplay::dateTime($aeAt);
-                }
-                if ($mock) {
-                    $detail[] = 'Entorno de prueba (mock): en producción debe configurarse certificado y endpoint reales.';
-                }
-
-                return self::pack(false, 'No válido', $codes, $messages, $detail);
+            if ($aeAt === '') {
+                $codes[] = 'hacienda_pending';
+                $msg = 'Pendiente de comprobación del certificado de Hacienda.';
+                return self::pack(false, 'No válido', $codes, [$msg], [$msg, $vigenciaCtx]);
             }
 
-            $detail = [
-                'Documento de Hacienda válido: vigencia en orden y AEAT correcta (código 1, huella OK).',
-                $vigenciaCtx,
-            ];
-            if ($aeAt !== '') {
-                $detail[] = 'Comprobación AEAT: ' . DateDisplay::dateTime($aeAt);
+            if ($codigo !== '1') {
+                $codes[] = 'hacienda_cotejo_failed';
+                $msg = 'No se ha podido obtener el certificado de Hacienda.';
+                return self::pack(false, 'No válido', $codes, [$msg], [$msg, $vigenciaCtx]);
             }
-            if ($mock) {
-                $detail[] = 'AEAT en modo mock / prueba.';
+
+            if (!$pdfOk) {
+                $codes[] = 'hacienda_invalid';
+                $msg = self::humanizeHaciendaError($validationErrors)
+                    ?? 'El certificado de Hacienda no cumple los requisitos.';
+                return self::pack(false, 'No válido', $codes, [$msg], [$msg, $vigenciaCtx]);
             }
 
             $messages[] = 'Listo.';
-
-            return self::pack(true, 'Válido', $codes, $messages, $detail);
+            return self::pack(true, 'Válido', $codes, $messages, [
+                'Documento válido según vigencia registrada.',
+                $vigenciaCtx,
+            ]);
         }
 
         $messages[] = 'Listo.';
@@ -179,4 +206,40 @@ final class CaeDocumentValidityService
 
         return in_array($s, ['t', 'true', '1', 'yes', 'on'], true);
     }
+
+    /**
+     * @param list<string> $errors
+     */
+    private static function humanizeHaciendaError(array $errors): ?string
+    {
+        if ($errors === []) {
+            return null;
+        }
+
+        $first = trim($errors[0]);
+        $lower = mb_strtolower($first);
+
+        if (str_contains($lower, 'caducado')) {
+            if (preg_match('/(\d{2}\/\d{2}\/\d{4})/', $first, $m)) {
+                return 'El documento está caducado: la fecha de fin (' . $m[1] . ') es anterior a hoy.';
+            }
+            return 'El documento está caducado.';
+        }
+
+        if (str_contains($lower, 'nif') || str_contains($lower, 'cif')) {
+            return 'El NIF/CIF del certificado no coincide con el del técnico.';
+        }
+
+        if (str_contains($lower, 'positivo') || str_contains($lower, 'corriente')) {
+            return 'El certificado indica que no está al corriente con Hacienda.';
+        }
+
+        if (str_contains($lower, 'fecha de caducidad') || str_contains($lower, 'vigencia')) {
+            return 'No se ha detectado una fecha de vigencia válida en el certificado.';
+        }
+
+        $clean = trim((string) preg_replace('/\bAEAT\b/i', 'certificado', $first));
+        return $clean !== '' ? $clean : null;
+    }
+
 }
