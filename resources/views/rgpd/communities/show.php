@@ -160,11 +160,12 @@ $sigStatusBadge = static function (string $st): string {
                         <th>Contacto</th>
                         <th>Vivienda</th>
                         <th>Firmas</th>
+                        <th class="text-end">Acciones</th>
                     </tr>
                     </thead>
                     <tbody>
                     <?php if ($residents === []): ?>
-                        <tr><td colspan="5" class="text-muted text-center py-4">Sin vecinos</td></tr>
+                        <tr><td colspan="6" class="text-muted text-center py-4">Sin vecinos</td></tr>
                     <?php else: ?>
                         <?php foreach ($residents as $r): ?>
                             <?php
@@ -206,6 +207,17 @@ $sigStatusBadge = static function (string $st): string {
                                             <span class="badge text-bg-warning"><?= (int) $stats['pending_n'] ?> pend.</span>
                                         <?php endif; ?>
                                     <?php endif; ?>
+                                </td>
+                                <td class="text-end text-nowrap">
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-primary"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#rgpdResidentSignedDocsModal"
+                                            data-resident-id="<?= (int) ($r['id'] ?? 0) ?>"
+                                            data-resident-name="<?= htmlspecialchars(app_resident_name($r), ENT_QUOTES, 'UTF-8') ?>"
+                                            title="Descargar documentos firmados">
+                                        <i class="bi bi-file-earmark-pdf"></i>
+                                    </button>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -569,6 +581,45 @@ $sigStatusBadge = static function (string $st): string {
     </div>
 </div>
 
+<div class="modal fade" id="rgpdResidentSignedDocsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <form method="post" id="rgpdResidentSignedDocsForm" class="modal-content border-0 shadow-lg">
+            <div class="modal-header border-bottom-0 pb-0">
+                <h5 class="modal-title h6 mb-0">Descargar firmados de vecino</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body pt-3">
+                <p class="small text-muted mb-3">
+                    Vecino: <strong id="rgpdResidentSignedDocsName">—</strong>
+                </p>
+
+                <label class="form-label small mb-2">Tipos de documento (plantillas)</label>
+                <div class="border rounded p-2" style="max-height:220px; overflow:auto;">
+                    <?php foreach ($templatesForFilter as $tf): ?>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="template_ids[]" value="<?= (int) $tf['id'] ?>" id="rgpd_tpl_<?= (int) $tf['id'] ?>">
+                            <label class="form-check-label small" for="rgpd_tpl_<?= (int) $tf['id'] ?>">
+                                <?= htmlspecialchars((string) $tf['name']) ?>
+                            </label>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+
+                <div class="form-check mt-3">
+                    <input class="form-check-input" type="checkbox" name="include_paper" id="rgpd_include_paper" value="1">
+                    <label class="form-check-label small" for="rgpd_include_paper">
+                        Incluir firmas en papel
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer border-top-0 gap-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary btn-sm">Descargar PDF</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <?php foreach ($signatures as $s): ?>
     <?php if ((string)($s['status'] ?? '') === 'pending'): ?>
     <div class="modal fade" id="paperModal<?= (int)($s['id']??0) ?>" tabindex="-1" aria-hidden="true">
@@ -670,6 +721,28 @@ $sigStatusBadge = static function (string $st): string {
         collapseEl.addEventListener('hide.bs.collapse', function () {
             toggleBtn.setAttribute('aria-expanded', 'false');
         });
+    });
+
+    const residentSignedModal = document.getElementById('rgpdResidentSignedDocsModal');
+    const residentSignedForm = document.getElementById('rgpdResidentSignedDocsForm');
+    const residentSignedName = document.getElementById('rgpdResidentSignedDocsName');
+
+    residentSignedModal?.addEventListener('show.bs.modal', function (event) {
+        const btn = event.relatedTarget;
+        if (!btn || !residentSignedForm) return;
+
+        const rid = btn.getAttribute('data-resident-id') || '0';
+        const rname = btn.getAttribute('data-resident-name') || '—';
+
+        residentSignedName && (residentSignedName.textContent = rname);
+
+        residentSignedForm.action = '<?= $ab ?>/rgpd/comunidades/<?= $cid ?>/vecinos/' + encodeURIComponent(rid) + '/documentos-firmados';
+
+        residentSignedForm.querySelectorAll('input[name="template_ids[]"]').forEach(function (el) {
+            el.checked = false;
+        });
+        const includePaper = document.getElementById('rgpd_include_paper');
+        if (includePaper) includePaper.checked = false;
     });
 })();
 </script>

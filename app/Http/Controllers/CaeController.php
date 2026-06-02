@@ -353,7 +353,7 @@ final class CaeController extends Controller
                     Acceder al portal de documentos
                 </a>
                 <p style='margin:10px 0 0 0; font-size:12px; color:#6b7280;'>
-                    Este enlace es personal, de un solo uso y caduca el " . date('d/m/Y', strtotime('+7 days')) . ".
+                    Este enlace es personal, permanece activo hasta que todos los documentos sean válidos, y caduca el " . date('d/m/Y', strtotime('+7 days')) . ".
                 </p>
             </div>
             <hr>
@@ -862,6 +862,7 @@ final class CaeController extends Controller
                 if ($isHaciendaDoc) {
                     $csvEval = $haciendaIntake->evaluateUploadedPdf($fullPath);
                     $detectedCsv = $csvEval['csv'];
+                    $prefillCsv = isset($csvEval['prefill_csv']) ? (string) $csvEval['prefill_csv'] : null;
                     $needsManual = (bool) $csvEval['needs_manual'];
                     $supportingNeedsManual = $needsManual;
 
@@ -886,7 +887,7 @@ final class CaeController extends Controller
                         'uploaded_by_user_id' => (int) ($_SESSION['user']['id'] ?? 0),
                         'ai_status' => $needsManual ? 'manual_review' : 'approved',
                         'ai_notes' => (string) $csvEval['notes'],
-                        'extracted_aeat_csv' => $detectedCsv,
+                        'extracted_aeat_csv' => $detectedCsv ?? ($prefillCsv !== '' ? $prefillCsv : null),
                         'status' => $needsManual ? 'pending_manual' : 'approved_auto',
                         'requires_manual_review' => $needsManual ? 'true' : 'false',
                     ]);
@@ -1017,9 +1018,10 @@ final class CaeController extends Controller
         if ($isMainFile) {
             $this->flash('Archivo CAE subido/sustituido correctamente.', 'success', 'Correcto');
         } elseif ($supportingNeedsManual) {
+
             $pendingMsg = ($docTypeName ?? '') === \App\Services\CaeReadinessService::DOCUMENT_TYPE_NAME_HACIENDA
-                ? 'Certificado de Hacienda registrado. Un administrador debe indicar el CSV (16 caracteres) antes de publicarlo.'
-                : 'El archivo se ha registrado. Un administrador debe confirmar la fecha de caducidad antes de publicarlo.';
+            ? 'Certificado de Hacienda registrado. Confirma el CSV del pie del documento (16 caracteres) antes de publicarlo.'
+            : 'El archivo se ha registrado. Un administrador debe confirmar la fecha de caducidad antes de publicarlo.';
             $this->flash(
                 $pendingMsg,
                 'warning',

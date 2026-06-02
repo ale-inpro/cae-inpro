@@ -168,9 +168,11 @@ return [
 
         // Portal público para técnicos (sin autenticación)
         ['method' => 'GET',  'path' => '/portal/{token}',        'action' => [TechnicianPortalController::class, 'show']],
-        ['method' => 'POST', 'path' => '/portal/{token}/upload',  'action' => [TechnicianPortalController::class, 'upload']],
+        ['method' => 'POST', 'path' => '/portal/{token}/hacienda-csv', 'action' => [TechnicianPortalController::class, 'uploadHaciendaByCsv']],
+        ['method' => 'POST', 'path' => '/portal/{token}/document/{docTypeId}/upload', 'action' => [TechnicianPortalController::class, 'uploadDocument']],
         ['method' => 'POST', 'path' => '/admin/cae/intake/{id}/approve', 'action' => [CaeController::class, 'approveIntake']],
         ['method' => 'POST', 'path' => '/admin/cae/intake/{id}/reject', 'action' => [CaeController::class, 'rejectIntake']],
+        ['method' => 'POST', 'path' => '/portal/{token}/hacienda-confirm-csv', 'action' => [TechnicianPortalController::class, 'confirmHaciendaCsv']],
 
         ['method' => 'POST', 'path' => '/admin/dev/aeat-cotejo-probe', 'action' => [AeatCotejoTestController::class, 'probe']],
         ['method' => 'GET',  'path' => '/admin/dev/aeat-cotejo-probe', 'action' => [AeatCotejoTestController::class, 'probe']],
@@ -178,5 +180,10 @@ return [
         ['method' => 'POST', 'path' => '/admin/cae/documentos/{documentId}/verify-aeat', 'action' => [CaeController::class, 'verifyAeatDocument']],
 
         ['method' => 'GET', 'path' => '/admin/comunidades/{id}/sync', 'action' => [CommunityController::class, 'syncState']],
+
+        ['method' => 'POST', 'path' => '/admin/rgpd/comunidades/{id}/vecinos/{residentId}/documentos-firmados', 'action' => [RgpdCommunityController::class, 'downloadResidentSignedDocuments']],
+        ['method' => 'POST', 'path' => '/gestor/rgpd/comunidades/{id}/vecinos/{residentId}/documentos-firmados', 'action' => [RgpdCommunityController::class, 'downloadResidentSignedDocuments']],
+        ['method' => 'POST', 'path' => '/admin/rgpd/comunidades/{id}/documentos-firmados', 'action' => [RgpdCommunityController::class, 'downloadCommunitySignedDocuments']],
+        ['method' => 'POST', 'path' => '/gestor/rgpd/comunidades/{id}/documentos-firmados', 'action' => [RgpdCommunityController::class, 'downloadCommunitySignedDocuments']],
     ],
 ];

@@ -122,7 +122,8 @@ final class AeatCotejoVerifierService
             'mock_sha1_for_file' => $uploadSha1,
         ];
 
-        $res = $this->cotejo->cotejar($csv, false, $cotejoCfg);
+        $res = $this->cotejarOnce($csv, $cotejoCfg);
+        $csv = (string) ($res['resolved_csv'] ?? $csv);
 
         $codigo = (string) ($res['codigo'] ?? '');
         $huellaAeat = strtoupper(trim((string) ($res['huella'] ?? '')));
@@ -131,10 +132,12 @@ final class AeatCotejoVerifierService
             $huellaOk = ($huellaAeat === $uploadSha1);
         }
 
+        $descripcion = (string) ($res['descripcion'] ?? '');
+
         $persist = array_merge($basePersist, [
             'extracted_aeat_csv' => $csv,
             'aeat_cotejo_codigo' => $codigo !== '' ? $codigo : null,
-            'aeat_cotejo_descripcion' => (string) ($res['descripcion'] ?? ''),
+            'aeat_cotejo_descripcion' => $descripcion,
             'aeat_cotejo_huella_ok' => $huellaOk,
             'aeat_cotejo_http_code' => (int) ($res['http_code'] ?? 0),
             'aeat_cotejo_csv_sustituto' => isset($res['csv_sustituto']) ? (string) $res['csv_sustituto'] : null,
@@ -318,6 +321,8 @@ final class AeatCotejoVerifierService
             return ['ok' => false, 'error' => 'CSV no válido (16 caracteres alfanuméricos).'];
         }
 
+        $uploadedByUserIdForDb = $uploadedByUserId > 0 ? $uploadedByUserId : null;
+
         $stmt = $pdo->prepare('
             SELECT cr.id, t.tax_id
             FROM cae_records cr
@@ -347,7 +352,8 @@ final class AeatCotejoVerifierService
             'mock_sha1_for_file' => '',
         ];
 
-        $res = $this->cotejo->cotejar($csv, false, $cotejoCfg);
+        $res = $this->cotejarOnce($csv, $cotejoCfg);
+        $csv = (string) ($res['resolved_csv'] ?? $csv);
         $codigo = (string) ($res['codigo'] ?? '');
 
         if ($codigo !== '1') {
@@ -374,7 +380,7 @@ final class AeatCotejoVerifierService
                 $pdo,
                 $caeRecordId,
                 $documentTypeId,
-                function () use ($pdo, $caeRecordId, $documentTypeId, $csv, $uploadedByUserId, $useMock, $checkedAt, $res, $codigo): int {
+                function () use ($pdo, $caeRecordId, $documentTypeId, $csv, $uploadedByUserIdForDb, $useMock, $checkedAt, $res, $codigo): int {
                     $stmt = $pdo->prepare("
                         INSERT INTO cae_documents
                         (cae_record_id, document_type_id, original_filename, storage_path, mime_type, file_size,
@@ -391,7 +397,11 @@ final class AeatCotejoVerifierService
                     $stmt->bindValue(':doc_type', $documentTypeId, PDO::PARAM_INT);
                     $stmt->bindValue(':orig', 'Certificado_oficial_Hacienda.pdf');
                     $stmt->bindValue(':path', '/uploads/cae/' . $caeRecordId . '/mock_sin_pdf.pdf');
-                    $stmt->bindValue(':user_id', $uploadedByUserId, PDO::PARAM_INT);
+                    if ($uploadedByUserIdForDb !== null) {
+                        $stmt->bindValue(':user_id', $uploadedByUserIdForDb, PDO::PARAM_INT);
+                    } else {
+                        $stmt->bindValue(':user_id', null, PDO::PARAM_NULL);
+                    }
                     $stmt->bindValue(':csv', $csv);
                     $stmt->bindValue(':mock', $useMock, PDO::PARAM_BOOL);
                     $stmt->bindValue(':checked', $checkedAt);
@@ -425,7 +435,7 @@ final class AeatCotejoVerifierService
             $caeRecordId,
             $documentTypeId,
             function () use (
-                $pdo, $caeRecordId, $documentTypeId, $csv, $uploadedByUserId, $useMock, $checkedAt,
+                $pdo, $caeRecordId, $documentTypeId, $csv, $uploadedByUserIdForDb, $useMock, $checkedAt,
                 $codigo, $desc, $res, $validation, $saved, $displayName, $pdfBytes
             ): int {
                 $pdfOk = (bool) $validation['ok'];
@@ -451,7 +461,11 @@ final class AeatCotejoVerifierService
                 $stmt->bindValue(':orig', $displayName);
                 $stmt->bindValue(':path', $saved['storage_path']);
                 $stmt->bindValue(':size', $saved['file_size'], PDO::PARAM_INT);
-                $stmt->bindValue(':user_id', $uploadedByUserId, PDO::PARAM_INT);
+                if ($uploadedByUserIdForDb !== null) {
+                    $stmt->bindValue(':user_id', $uploadedByUserIdForDb, PDO::PARAM_INT);
+                } else {
+                    $stmt->bindValue(':user_id', null, PDO::PARAM_NULL);
+                }
                 $stmt->bindValue(':expires', $validation['expires_at']);
                 $stmt->bindValue(':csv', $csv);
                 $stmt->bindValue(':mock', $useMock, PDO::PARAM_BOOL);
@@ -627,5 +641,19 @@ final class AeatCotejoVerifierService
 
         $stmt->bindValue(':id', $documentId, PDO::PARAM_INT);
         $stmt->execute();
+    }
+
+        /**
+     * Una sola consulta AEAT por CSV (sin reintentos por confusiones OCR).
+     *
+     * @param array<string, mixed> $cotejoCfg
+     * @return array<string, mixed>
+     */
+    private function cotejarOnce(string $csv, array $cotejoCfg): array
+    {
+        $res = $this->cotejo->cotejar($csv, false, $cotejoCfg);
+        $res['resolved_csv'] = $csv;
+
+        return $res;
     }
 }

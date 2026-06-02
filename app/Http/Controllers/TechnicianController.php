@@ -334,9 +334,16 @@ final class TechnicianController extends Controller
                 JOIN document_types dt ON dt.id = i.document_type_id
                 WHERE i.technician_id = :tid
                   AND i.status = 'pending_manual'
+                  AND NOT (
+                      i.source_channel = 'portal_upload'
+                      AND dt.name = :hacienda_name
+                  )
                 ORDER BY i.created_at DESC
             ");
-            $stmt->execute(['tid' => $id]);
+            $stmt->execute([
+                'tid' => $id,
+                'hacienda_name' => \App\Services\CaeReadinessService::DOCUMENT_TYPE_NAME_HACIENDA,
+            ]);
             $pendingIntakeDocs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             foreach ($pendingIntakeDocs as $i => $row) {

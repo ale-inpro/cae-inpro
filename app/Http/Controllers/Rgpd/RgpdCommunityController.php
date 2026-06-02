@@ -8,6 +8,9 @@ use App\Core\Controller;
 use App\Services\Rgpd\RgpdAccess;
 use App\Services\Rgpd\RgpdTemplateCompliance;
 use PDO;
+use App\Services\Rgpd\RgpdSignedPdfService;
+use DateTimeImmutable;
+use App\Services\Rgpd\RgpdPdfMergeService;
 
 final class RgpdCommunityController extends Controller
 {
@@ -38,12 +41,20 @@ final class RgpdCommunityController extends Controller
         ";
         $rows = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
 
+        $templatesForDownload = $pdo->query("
+            SELECT id, name
+            FROM rgpd_templates
+            WHERE is_active = TRUE
+            ORDER BY name
+        ")->fetchAll(PDO::FETCH_ASSOC);
+
         $this->render('rgpd.communities.index', [
             'title' => 'RGPD · Comunidades',
             'area' => $this->currentArea(),
             'areaBaseUrl' => $this->areaBaseUrl(),
             'baseUrl' => $this->baseUrl(),
             'communities' => $rows,
+            'templatesForDownload' => $templatesForDownload,
         ]);
     }
 
@@ -223,5 +234,274 @@ final class RgpdCommunityController extends Controller
         $this->flash('Presidente desasignado.', 'info', 'RGPD');
         header('Location: ' . $this->areaBaseUrl() . '/rgpd/comunidades/' . $communityId . '#rgpd-vecinos');
         exit;
+    }
+
+    /** @param array<string, string> $params */
+    public function downloadResidentSignedDocuments(array $params = []): void
+    {
+        $this->assertAreaAccess();
+        $pdo = $this->rgpdPdo();
+        [$role, $mcId] = $this->rgpdAccessContext();
+
+        $communityId = (int) ($params['id'] ?? 0);
+        $residentId = (int) ($params['residentId'] ?? 0);
+
+        $community = RgpdAccess::assertCommunity($pdo, $communityId, $role, $mcId);
+        if ($community === null) {
+            http_response_code(404);
+            $this->respond('Comunidad no encontrada');
+            return;
+        }
+
+        $residentStmt = $pdo->prepare("
+            SELECT id, TRIM(CONCAT_WS(' ', nombre, apellidos)) AS resident_name
+            FROM community_residents
+            WHERE id = :rid AND community_id = :cid AND is_active = TRUE
+            LIMIT 1
+        ");
+        $residentStmt->execute(['rid' => $residentId, 'cid' => $communityId]);
+        $resident = $residentStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$resident) {
+            $this->flash('Vecino no válido para esta comunidad.', 'warning', 'RGPD');
+            header('Location: ' . $this->areaBaseUrl() . '/rgpd/comunidades/' . $communityId . '#rgpd-vecinos');
+            exit;
+        }
+
+        $selectedTemplateIds = array_map('intval', (array) ($_POST['template_ids'] ?? []));
+        $selectedTemplateIds = array_values(array_unique(array_filter($selectedTemplateIds, static fn(int $v): bool => $v > 0)));
+
+        $includePaper = !empty($_POST['include_paper']);
+
+        if ($selectedTemplateIds !== []) {
+            $in = implode(',', array_fill(0, count($selectedTemplateIds), '?'));
+            $sql = "
+                SELECT s.id, s.status, s.rendered_html, s.signature_image_path, s.signed_at, s.signer_ip, s.signer_user_agent,
+                        t.name AS template_name
+                FROM rgpd_signature_requests s
+                JOIN rgpd_templates t ON t.id = s.template_id
+                WHERE s.community_id = ? AND s.resident_id = ?
+                    AND s.status IN ('signed'" . ($includePaper ? ",'paper'" : '') . ")
+                    AND s.template_id IN ({$in})
+                ORDER BY s.signed_at DESC, s.created_at DESC
+            ";
+            $stmt = $pdo->prepare($sql);
+            $paramsExec = array_merge([$communityId, $residentId], $selectedTemplateIds);
+            $stmt->execute($paramsExec);
+        } else {
+            $stmt = $pdo->prepare("
+                SELECT s.id, s.status, s.rendered_html, s.signature_image_path, s.signed_at, s.signer_ip, s.signer_user_agent,
+                        t.name AS template_name
+                FROM rgpd_signature_requests s
+                JOIN rgpd_templates t ON t.id = s.template_id
+                WHERE s.community_id = :cid
+                    AND s.resident_id = :rid
+                    AND s.status IN ('signed'" . ($includePaper ? ",'paper'" : '') . ")
+                ORDER BY s.signed_at DESC, s.created_at DESC
+            ");
+            $stmt->execute([
+                'cid' => $communityId,
+                'rid' => $residentId,
+            ]);
+        }
+
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if ($rows === []) {
+            $this->flash('No hay documentos firmados con los filtros seleccionados.', 'info', 'RGPD');
+            header('Location: ' . $this->areaBaseUrl() . '/rgpd/comunidades/' . $communityId . '#rgpd-vecinos');
+            exit;
+        }
+
+        $docs = [];
+        foreach ($rows as $row) {
+            $sigPath = trim((string) ($row['signature_image_path'] ?? ''));
+            $sigDataUri = '';
+            if ($sigPath !== '') {
+                $abs = dirname(__DIR__, 4) . '/public' . $sigPath;
+                if (is_file($abs)) {
+                    $raw = file_get_contents($abs);
+                    if ($raw !== false) {
+                        $sigDataUri = 'data:image/png;base64,' . base64_encode($raw);
+                    }
+                }
+            }
+
+            $signedAtRaw = (string) ($row['signed_at'] ?? '');
+            $signedAtLabel = '—';
+            if ($signedAtRaw !== '') {
+                try {
+                    $signedAtLabel = (new DateTimeImmutable($signedAtRaw))->format('d/m/Y H:i');
+                } catch (\Throwable) {
+                    $signedAtLabel = $signedAtRaw;
+                }
+            }
+
+            $docs[] = [
+                'template_name' => (string) ($row['template_name'] ?? 'Documento RGPD'),
+                'status' => (string) ($row['status'] ?? ''),
+                'rendered_html' => (string) ($row['rendered_html'] ?? ''),
+                'signature_data_uri' => $sigDataUri,
+                'signed_at_label' => $signedAtLabel,
+                'signer_ip' => (string) ($row['signer_ip'] ?? ''),
+                'signer_user_agent' => (string) ($row['signer_user_agent'] ?? ''),
+            ];
+        }
+
+        $communityName = (string) ($community['name'] ?? ('Comunidad ' . $communityId));
+        $residentName = (string) ($resident['resident_name'] ?? ('Vecino ' . $residentId));
+
+        $pdfBytes = RgpdSignedPdfService::renderResidentSignedBundle($communityName, $residentName, $docs);
+
+        $safeCommunity = preg_replace('/[^A-Za-z0-9_-]+/', '_', $communityName) ?: 'comunidad';
+        $safeResident = preg_replace('/[^A-Za-z0-9_-]+/', '_', $residentName) ?: 'vecino';
+        $filename = 'rgpd_firmados_' . $safeCommunity . '_' . $safeResident . '_' . date('Ymd_His') . '.pdf';
+
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Content-Length: ' . strlen($pdfBytes));
+        echo $pdfBytes;
+        exit;
+    }
+
+    /** @param array<string, string> $params */
+    public function downloadCommunitySignedDocuments(array $params = []): void
+    {
+        $this->assertAreaAccess();
+        $pdo = $this->rgpdPdo();
+        [$role, $mcId] = $this->rgpdAccessContext();
+
+        $communityId = (int) ($params['id'] ?? 0);
+
+        $community = RgpdAccess::assertCommunity($pdo, $communityId, $role, $mcId);
+        if ($community === null) {
+            http_response_code(404);
+            $this->respond('Comunidad no encontrada');
+            return;
+        }
+
+        $selectedTemplateIds = array_map('intval', (array) ($_POST['template_ids'] ?? []));
+        $selectedTemplateIds = array_values(array_unique(array_filter($selectedTemplateIds, static fn(int $v): bool => $v > 0)));
+        $includePaper = !empty($_POST['include_paper']);
+        $includeContract = !empty($_POST['include_contract']);
+
+        if ($selectedTemplateIds === []) {
+            $this->flash('Seleccione al menos un tipo de documento.', 'warning', 'RGPD');
+            header('Location: ' . $this->areaBaseUrl() . '/rgpd/comunidades');
+            exit;
+        }
+
+        $in = implode(',', array_fill(0, count($selectedTemplateIds), '?'));
+        $sql = "
+            SELECT s.id, s.status, s.rendered_html, s.signature_image_path, s.signed_at, s.signer_ip, s.signer_user_agent,
+                t.name AS template_name,
+                TRIM(CONCAT_WS(' ', r.nombre, r.apellidos)) AS resident_name
+            FROM rgpd_signature_requests s
+            JOIN rgpd_templates t ON t.id = s.template_id
+            JOIN community_residents r ON r.id = s.resident_id
+            WHERE s.community_id = ?
+            AND s.status IN ('signed'" . ($includePaper ? ",'paper'" : '') . ")
+            AND s.template_id IN ({$in})
+            ORDER BY resident_name ASC, s.signed_at DESC, s.created_at DESC
+        ";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute(array_merge([$communityId], $selectedTemplateIds));
+
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if ($rows === []) {
+            $this->flash('No hay documentos firmados con los filtros seleccionados.', 'info', 'RGPD');
+            header('Location: ' . $this->areaBaseUrl() . '/rgpd/comunidades');
+            exit;
+        }
+
+        $docs = [];
+        foreach ($rows as $row) {
+            $sigPath = trim((string) ($row['signature_image_path'] ?? ''));
+            $sigDataUri = '';
+            if ($sigPath !== '') {
+                $abs = dirname(__DIR__, 4) . '/public' . $sigPath;
+                if (is_file($abs)) {
+                    $raw = file_get_contents($abs);
+                    if ($raw !== false) {
+                        $sigDataUri = 'data:image/png;base64,' . base64_encode($raw);
+                    }
+                }
+            }
+
+            $signedAtRaw = (string) ($row['signed_at'] ?? '');
+            $signedAtLabel = '—';
+            if ($signedAtRaw !== '') {
+                try {
+                    $signedAtLabel = (new DateTimeImmutable($signedAtRaw))->format('d/m/Y H:i');
+                } catch (\Throwable) {
+                    $signedAtLabel = $signedAtRaw;
+                }
+            }
+
+            $docs[] = [
+                'template_name' => (string) ($row['template_name'] ?? 'Documento RGPD'),
+                'resident_name' => (string) ($row['resident_name'] ?? '—'),
+                'status' => (string) ($row['status'] ?? ''),
+                'rendered_html' => (string) ($row['rendered_html'] ?? ''),
+                'signature_data_uri' => $sigDataUri,
+                'signed_at_label' => $signedAtLabel,
+                'signer_ip' => (string) ($row['signer_ip'] ?? ''),
+                'signer_user_agent' => (string) ($row['signer_user_agent'] ?? ''),
+            ];
+        }
+
+        $communityName = (string) ($community['name'] ?? ('Comunidad ' . $communityId));
+        $signedDocsPdfBytes = RgpdSignedPdfService::renderCommunitySignedBundle($communityName, $docs);
+
+        $tmpFiles = [];
+        try {
+            // 1) PDF generado al vuelo (firmados)
+            $signedTmp = tempnam(sys_get_temp_dir(), 'rgpd_signed_');
+            if ($signedTmp === false) {
+                throw new \RuntimeException('No se pudo crear archivo temporal.');
+            }
+            $signedTmpPdf = $signedTmp . '.pdf';
+            @rename($signedTmp, $signedTmpPdf);
+            file_put_contents($signedTmpPdf, $signedDocsPdfBytes);
+            $tmpFiles[] = $signedTmpPdf;
+
+            // 2) Contrato comunidad (si se marca y existe)
+            if ($includeContract) {
+                $contractStmt = $pdo->prepare("
+                    SELECT storage_path
+                    FROM community_rgpd_contracts
+                    WHERE community_id = :cid
+                    AND storage_path IS NOT NULL
+                    AND storage_path <> ''
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                ");
+                $contractStmt->execute(['cid' => $communityId]);
+                $contractPath = trim((string) ($contractStmt->fetchColumn() ?: ''));
+                if ($contractPath !== '') {
+                    $contractAbs = dirname(__DIR__, 4) . '/public' . $contractPath;
+                    if (is_file($contractAbs)) {
+                        $tmpFiles[] = $contractAbs;
+                    }
+                }
+            }
+
+            $mergedPdfBytes = RgpdPdfMergeService::mergeFiles($tmpFiles);
+
+            $safeCommunity = preg_replace('/[^A-Za-z0-9_-]+/', '_', $communityName) ?: 'comunidad';
+            $filename = 'rgpd_firmados_comunidad_' . $safeCommunity . '_' . date('Ymd_His') . '.pdf';
+
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('Content-Length: ' . strlen($mergedPdfBytes));
+            echo $mergedPdfBytes;
+            exit;
+        } finally {
+            foreach ($tmpFiles as $f) {
+                if (str_contains($f, sys_get_temp_dir()) && is_file($f)) {
+                    @unlink($f);
+                }
+            }
+        }
     }
 }
