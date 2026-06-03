@@ -257,12 +257,22 @@
       const storageKey = "sidebar." + targetId + ".open";
       const pageDefaultOpen = target.getAttribute("data-open") === "1";
       const saved = window.localStorage.getItem(storageKey);
-  
-      // Sección activa: abierta al cargar. Otras: localStorage o cerrada por defecto.
-      const shouldOpen = pageDefaultOpen
-        ? true
-        : saved === "1";
-  
+
+      const isDashboardPage = /\/(admin|gestor)\/dashboard$/i.test(
+        window.location.pathname || ""
+      );
+
+      let shouldOpen;
+      if (isDashboardPage) {
+        // En dashboard: solo CAE abierto; ignora localStorage del resto
+        shouldOpen = targetId === "cae-group";
+        window.localStorage.setItem(storageKey, shouldOpen ? "1" : "0");
+      } else if (pageDefaultOpen) {
+        shouldOpen = true;
+      } else {
+        shouldOpen = saved === "1";
+      }
+
       setSidebarGroupState(btn, target, shouldOpen);
   
       btn.addEventListener("click", (event) => {

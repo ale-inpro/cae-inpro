@@ -21,6 +21,11 @@ use App\Http\Controllers\Rgpd\RgpdContractController;
 use App\Http\Controllers\Rgpd\RgpdMassSendController;
 use App\Http\Controllers\Rgpd\RgpdSignController;
 
+use App\Http\Controllers\Supply\SupplyCommunityController;
+use App\Http\Controllers\Supply\SupplyDashboardController;
+use App\Http\Controllers\Supply\SupplyResidentController;
+use App\Http\Controllers\Supply\SupplyCompanyController;
+
 return [
     'routes' => [
         ['method' => 'GET', 'path' => '/login', 'action' => [AuthController::class, 'showLogin']],
@@ -185,5 +190,50 @@ return [
         ['method' => 'POST', 'path' => '/gestor/rgpd/comunidades/{id}/vecinos/{residentId}/documentos-firmados', 'action' => [RgpdCommunityController::class, 'downloadResidentSignedDocuments']],
         ['method' => 'POST', 'path' => '/admin/rgpd/comunidades/{id}/documentos-firmados', 'action' => [RgpdCommunityController::class, 'downloadCommunitySignedDocuments']],
         ['method' => 'POST', 'path' => '/gestor/rgpd/comunidades/{id}/documentos-firmados', 'action' => [RgpdCommunityController::class, 'downloadCommunitySignedDocuments']],
+
+        // --- SUMINISTROS (admin) ---
+        ['method' => 'GET', 'path' => '/admin/suministros/comunidades', 'action' => [SupplyCommunityController::class, 'index']],
+        ['method' => 'GET', 'path' => '/admin/suministros/comunidades/{id}', 'action' => [SupplyCommunityController::class, 'show']],
+
+        // --- SUMINISTROS (gestor) ---
+        ['method' => 'GET', 'path' => '/gestor/suministros/comunidades', 'action' => [SupplyCommunityController::class, 'index']],
+        ['method' => 'GET', 'path' => '/gestor/suministros/comunidades/{id}', 'action' => [SupplyCommunityController::class, 'show']],
+
+        ['method' => 'POST', 'path' => '/admin/suministros/comunidades/{id}/contratos', 'action' => [SupplyCommunityController::class, 'store']],
+        ['method' => 'POST', 'path' => '/gestor/suministros/comunidades/{id}/contratos', 'action' => [SupplyCommunityController::class, 'store']],
+
+        // Resumen y vecinos
+        ['method' => 'GET', 'path' => '/admin/suministros', 'action' => [SupplyDashboardController::class, 'index']],
+        ['method' => 'GET', 'path' => '/gestor/suministros', 'action' => [SupplyDashboardController::class, 'index']],
+
+        ['method' => 'GET', 'path' => '/admin/suministros/vecinos', 'action' => [SupplyResidentController::class, 'index']],
+        ['method' => 'GET', 'path' => '/gestor/suministros/vecinos', 'action' => [SupplyResidentController::class, 'index']],
+        ['method' => 'GET', 'path' => '/admin/suministros/vecinos/{id}', 'action' => [SupplyResidentController::class, 'show']],
+        ['method' => 'GET', 'path' => '/gestor/suministros/vecinos/{id}', 'action' => [SupplyResidentController::class, 'show']],
+
+        ['method' => 'POST', 'path' => '/admin/suministros/vecinos/{id}/contratos', 'action' => [SupplyResidentController::class, 'store']],
+        ['method' => 'POST', 'path' => '/gestor/suministros/vecinos/{id}/contratos', 'action' => [SupplyResidentController::class, 'store']],
+        ['method' => 'POST', 'path' => '/admin/suministros/vecinos/{id}/contratos/{contractId}/update', 'action' => [SupplyResidentController::class, 'update']],
+        ['method' => 'POST', 'path' => '/gestor/suministros/vecinos/{id}/contratos/{contractId}/update', 'action' => [SupplyResidentController::class, 'update']],
+        ['method' => 'POST', 'path' => '/admin/suministros/vecinos/{id}/contratos/{contractId}/delete', 'action' => [SupplyResidentController::class, 'delete']],
+        ['method' => 'POST', 'path' => '/gestor/suministros/vecinos/{id}/contratos/{contractId}/delete', 'action' => [SupplyResidentController::class, 'delete']],
+
+        ['method' => 'POST', 'path' => '/admin/suministros/comunidades/{id}/contratos/{contractId}/update', 'action' => [SupplyCommunityController::class, 'update']],
+        ['method' => 'POST', 'path' => '/gestor/suministros/comunidades/{id}/contratos/{contractId}/update', 'action' => [SupplyCommunityController::class, 'update']],
+
+        ['method' => 'POST', 'path' => '/admin/suministros/comunidades/{id}/contratos/{contractId}/delete', 'action' => [SupplyCommunityController::class, 'delete']],
+        ['method' => 'POST', 'path' => '/gestor/suministros/comunidades/{id}/contratos/{contractId}/delete', 'action' => [SupplyCommunityController::class, 'delete']],
+
+        ['method' => 'GET', 'path' => '/admin/suministros/contratos/{contractId}/documento', 'action' => [SupplyCommunityController::class, 'downloadDocument']],
+        ['method' => 'GET', 'path' => '/gestor/suministros/contratos/{contractId}/documento', 'action' => [SupplyCommunityController::class, 'downloadDocument']],
+
+        ['method' => 'GET', 'path' => '/admin/suministros/contratos/{contractId}/documento/ver', 'action' => [SupplyCommunityController::class, 'previewDocument']],
+        ['method' => 'GET', 'path' => '/gestor/suministros/contratos/{contractId}/documento/ver', 'action' => [SupplyCommunityController::class, 'previewDocument']],
+        ['method' => 'GET', 'path' => '/admin/suministros/empresas', 'action' => [SupplyCompanyController::class, 'index']],
+        ['method' => 'GET', 'path' => '/admin/suministros/empresas/nueva', 'action' => [SupplyCompanyController::class, 'create']],
+        ['method' => 'POST', 'path' => '/admin/suministros/empresas', 'action' => [SupplyCompanyController::class, 'store']],
+        ['method' => 'GET', 'path' => '/admin/suministros/empresas/{id}/editar', 'action' => [SupplyCompanyController::class, 'edit']],
+        ['method' => 'POST', 'path' => '/admin/suministros/empresas/{id}/update', 'action' => [SupplyCompanyController::class, 'update']],
+        ['method' => 'POST', 'path' => '/admin/suministros/empresas/{id}/delete', 'action' => [SupplyCompanyController::class, 'delete']],
     ],
 ];
