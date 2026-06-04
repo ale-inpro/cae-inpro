@@ -8,6 +8,9 @@ use App\Core\Controller;
 use PDO;
 use App\Services\Rgpd\RgpdTemplateTokens;
 use App\Services\Rgpd\RgpdTemplateRenderer;
+use App\Services\Rgpd\RgpdAccess;
+use App\Services\Rgpd\RgpdTemplateCompliance;
+use App\Services\Rgpd\RgpdBlankPdfZipService;
 
 final class RgpdTemplateController extends Controller
 {
@@ -26,6 +29,34 @@ final class RgpdTemplateController extends Controller
             ORDER BY kind DESC, name
         ")->fetchAll(PDO::FETCH_ASSOC);
 
+        [$role, $mcId] = $this->rgpdAccessContext();
+        $scope = $this->communitiesScopeSql($role, $mcId);
+        $communities = $pdo->query("
+            SELECT c.id, c.name
+            FROM communities c
+            WHERE c.is_active = TRUE {$scope}
+            ORDER BY c.name
+        ")->fetchAll(PDO::FETCH_ASSOC);
+
+        $blankResidentsByCommunityTemplate = [];
+        foreach ($communities as $comm) {
+            $cid = (int) ($comm['id'] ?? 0);
+            if ($cid <= 0) {
+                continue;
+            }
+            foreach ($rows as $tpl) {
+                $tid = (int) ($tpl['id'] ?? 0);
+                if ($tid <= 0) {
+                    continue;
+                }
+                if (!in_array($tpl['is_active'] ?? true, [true, 't', '1', 1, 'true'], true)) {
+                    continue;
+                }
+                $blankResidentsByCommunityTemplate[$cid][$tid] =
+                    RgpdTemplateCompliance::blankDownloadableResidents($pdo, $cid, $tid);
+            }
+        }
+
         $this->render('rgpd.templates.index', [
             'title' => 'RGPD · Plantillas',
             'area' => $this->currentArea(),
@@ -34,6 +65,8 @@ final class RgpdTemplateController extends Controller
             'templates' => $rows,
             'categories' => RgpdTemplateTokens::categories(),
             'isAdmin' => $role === 'admin',
+            'communities' => $communities,
+            'blankResidentsByCommunityTemplate' => $blankResidentsByCommunityTemplate,
         ]);
     }
 
@@ -322,5 +355,37 @@ final class RgpdTemplateController extends Controller
             $n++;
             $candidate = $slug . '-' . $n;
         }
+    }
+
+    /** @param array<string, string> $params */
+    public function downloadBlankFromTemplateIndex(array $params = []): void
+    {
+        $this->assertAreaAccess();
+        $pdo = $this->rgpdPdo();
+        [$role, $mcId] = $this->rgpdAccessContext();
+
+        $templateId = (int) ($params['id'] ?? 0);
+        $communityId = (int) ($_POST['community_id'] ?? 0);
+
+        $tplActive = $pdo->prepare('SELECT id FROM rgpd_templates WHERE id = :id AND is_active = TRUE LIMIT 1');
+        $tplActive->execute(['id' => $templateId]);
+        if (!$tplActive->fetchColumn()) {
+            $this->flash('La plantilla está desactivada y no se puede descargar.', 'warning', 'RGPD');
+            header('Location: ' . $this->areaBaseUrl() . '/rgpd/plantillas');
+            exit;
+        }
+
+        $residentIds = array_values(array_filter($residentIds, static fn(int $v): bool => $v > 0));
+        if ($residentIds === []) {
+            $this->flash('Seleccione al menos un vecino.', 'warning', 'RGPD');
+            header('Location: ' . $this->areaBaseUrl() . '/rgpd/plantillas');
+            exit;
+        }
+
+        // Reutiliza la misma lógica que downloadBlankTemplatesZip
+        (new RgpdCommunityController())->downloadBlankTemplatesZip([
+            'id' => (string) $communityId,
+            'templateId' => (string) $templateId,
+        ]);
     }
 }

@@ -229,8 +229,6 @@ final class RgpdMassSendController extends Controller
         $pdo = $this->rgpdPdo();
         [$role, $mcId] = $this->rgpdAccessContext();
         $id = (int) ($params['id'] ?? 0);
-        $notes = trim((string) ($_POST['paper_notes'] ?? ''));
-        $userId = (int) ($_SESSION['user']['id'] ?? 0);
 
         $stmt = $pdo->prepare('SELECT * FROM rgpd_signature_requests WHERE id = :id LIMIT 1');
         $stmt->execute(['id' => $id]);
@@ -247,18 +245,7 @@ final class RgpdMassSendController extends Controller
             return;
         }
 
-        $pdo->prepare("
-            UPDATE rgpd_signature_requests
-            SET status = 'paper', signed_on_paper = TRUE, paper_notes = :notes,
-                paper_recorded_by_user_id = :uid, signed_at = NOW(), updated_at = NOW()
-            WHERE id = :id
-        ")->execute([
-            'id' => $id,
-            'notes' => $notes !== '' ? $notes : null,
-            'uid' => $userId > 0 ? $userId : null,
-        ]);
-
-        $this->flash('Firma registrada en papel.', 'success', 'RGPD');
+        $this->flash('Registre la firma en papel desde la pestaña Vecinos subiendo el PDF firmado.', 'info', 'RGPD');
         header('Location: ' . $this->refererCommunityUrl((int) $row['community_id']));
         exit;
     }

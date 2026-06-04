@@ -10,6 +10,9 @@ $residentSignStats = $residentSignStats ?? [];
 $pendingCount = (int) ($pendingCount ?? 0);
 $sigFilters = $sigFilters ?? ['status' => 'pending', 'template_id' => 0, 'from' => '', 'to' => ''];
 $templatesForFilter = $templatesForFilter ?? [];
+$paperEligibleByResident = $paperEligibleByResident ?? [];
+$blankResidentsByTemplate = $blankResidentsByTemplate ?? [];
+
 $cid = (int) ($c['id'] ?? 0);
 $returnToDocs = ($areaBaseUrl ?? '/admin') . '/rgpd/comunidades/' . $cid . '#rgpd-documentos';
 $contractSignedInput = ($contract && !empty($contract['signed_at']))
@@ -176,6 +179,7 @@ $sigStatusBadge = static function (string $st): string {
                                 $props = is_string($r['propiedades']) ? json_decode($r['propiedades'], true) : $r['propiedades'];
                                 $vivienda = is_array($props) ? (string) ($props['vivienda'] ?? '') : '';
                             }
+                            $paperTplList = $paperEligibleByResident[$rid] ?? [];
                             ?>
                             <tr>
                                 <td>
@@ -209,15 +213,29 @@ $sigStatusBadge = static function (string $st): string {
                                     <?php endif; ?>
                                 </td>
                                 <td class="text-end text-nowrap">
-                                    <button type="button"
-                                            class="btn btn-sm btn-outline-primary"
-                                            data-bs-toggle="modal"
-                                            data-bs-target="#rgpdResidentSignedDocsModal"
-                                            data-resident-id="<?= (int) ($r['id'] ?? 0) ?>"
-                                            data-resident-name="<?= htmlspecialchars(app_resident_name($r), ENT_QUOTES, 'UTF-8') ?>"
-                                            title="Descargar documentos firmados">
-                                        <i class="bi bi-file-earmark-pdf"></i>
-                                    </button>
+                                    <div class="table-actions justify-content-end">
+                                    <?php if ($paperTplList !== []): ?>
+                                        <button type="button"
+                                                class="btn btn-sm btn-outline-secondary"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#rgpdPaperUploadModal"
+                                                data-resident-id="<?= $rid ?>"
+                                                data-resident-name="<?= htmlspecialchars(app_resident_name($r), ENT_QUOTES, 'UTF-8') ?>"
+                                                data-paper-templates="<?= htmlspecialchars(json_encode($paperEligibleByResident[$rid] ?? [], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>"
+                                                title="Subir firmas en papel">
+                                            <i class="bi bi-upload" style="pointer-events: none;"></i>
+                                        </button>
+                                    <?php endif; ?>
+                                        <button type="button"
+                                                class="btn btn-sm btn-outline-primary"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#rgpdResidentSignedDocsModal"
+                                                data-resident-id="<?= $rid ?>"
+                                                data-resident-name="<?= htmlspecialchars(app_resident_name($r), ENT_QUOTES, 'UTF-8') ?>"
+                                                title="Descargar documentos firmados">
+                                            <i class="bi bi-file-earmark-pdf"></i>
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -293,11 +311,12 @@ $sigStatusBadge = static function (string $st): string {
                         <th>Último envío</th>
                         <th>Audiencia</th>
                         <th>Progreso</th>
+                        <th class="text-end">Plantilla</th>
                     </tr>
                     </thead>
                     <tbody>
                     <?php if ($documentSummaries === []): ?>
-                        <tr><td colspan="4" class="text-muted text-center py-3">Sin plantillas activas.</td></tr>
+                        <tr><td colspan="5" class="text-muted text-center py-3">Sin plantillas activas.</td></tr>
                     <?php else: ?>
                         <?php foreach ($documentSummaries as $doc): ?>
                             <?php
@@ -364,10 +383,22 @@ $sigStatusBadge = static function (string $st): string {
                                         </div>
                                     <?php endif; ?>
                                 </td>
+                                <td class="text-end text-nowrap">
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-primary"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#rgpdBlankDownloadModal"
+                                            data-template-id="<?= (int) ($doc['template_id'] ?? 0) ?>"
+                                            data-template-name="<?= htmlspecialchars((string) ($doc['template_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                            data-residents="<?= htmlspecialchars(json_encode($blankResidentsByTemplate[(int)($doc['template_id']??0)] ?? [], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>"
+                                            title="Descargar plantilla para firmar en papel">
+                                        <i class="bi bi-download"></i> Plantilla
+                                    </button>
+                                </td>
                             </tr>
                             <?php if ($hasCamp && (int) ($doc['outstanding'] ?? 0) > 0): ?>
                             <tr class="rgpd-doc-detail-row">
-                                <td colspan="4" class="p-0 border-0">
+                                <td colspan="5" class="p-0 border-0">
                                     <div class="collapse" id="<?= $collapseId ?>">
                                         <div class="rgpd-pending-panel">
                                             <?php if ($pendingN > 0): ?>
@@ -504,14 +535,16 @@ $sigStatusBadge = static function (string $st): string {
                                                     <i class="bi bi-envelope-arrow-up"></i>
                                                 </button>
                                             </form>
-                                            <button type="button"
-                                                    class="btn btn-sm btn-outline-secondary"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#paperModal<?= (int)($s['id']??0) ?>"
-                                                    title="Registrar en papel">
-                                                <i class="bi bi-journal-text"></i>
-                                            </button>
                                         </div>
+                                        <?php elseif ($st === 'paper' && !empty($s['paper_signed_pdf_path'])): ?>
+                                        <button type="button"
+                                                class="btn btn-sm btn-outline-secondary"
+                                                data-file-preview
+                                                data-file-preview-url="<?= htmlspecialchars($bu . (string) $s['paper_signed_pdf_path'], ENT_QUOTES, 'UTF-8') ?>"
+                                                data-file-preview-name="Firma en papel"
+                                                title="Ver PDF firmado en papel">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
                                     <?php else: ?>
                                         <span class="text-muted small">—</span>
                                     <?php endif; ?>
@@ -620,27 +653,72 @@ $sigStatusBadge = static function (string $st): string {
     </div>
 </div>
 
-<?php foreach ($signatures as $s): ?>
-    <?php if ((string)($s['status'] ?? '') === 'pending'): ?>
-    <div class="modal fade" id="paperModal<?= (int)($s['id']??0) ?>" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-sm">
-            <form method="post" action="<?= $ab ?>/rgpd/firmas/<?= (int)($s['id']??0) ?>/papel" class="modal-content border-0 shadow-lg">
-                <div class="modal-header border-bottom-0 pb-0">
-                    <h5 class="modal-title h6 mb-0">Firma en papel</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+<div class="modal fade" id="rgpdBlankDownloadModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <form method="post" id="rgpdBlankDownloadForm" class="modal-content border-0 shadow-lg">
+            <div class="modal-header border-bottom-0 pb-0">
+                <h5 class="modal-title h6 mb-0">Descargar plantilla</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body pt-3">
+                <p class="small text-muted mb-2">Documento: <strong id="rgpdBlankTemplateName">—</strong></p>
+                <p class="small text-muted mb-3">Seleccione vecinos. Se generará un ZIP con un PDF por vecino.</p>
+                <div class="mb-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="rgpdBlankSelectAll">Todos</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="rgpdBlankSelectNone">Ninguno</button>
                 </div>
-                <div class="modal-body pt-3">
-                    <textarea name="paper_notes" class="form-control form-control-sm" rows="3" placeholder="Notas opcionales"></textarea>
-                </div>
-                <div class="modal-footer border-top-0 gap-2">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-primary btn-sm">Registrar</button>
-                </div>
-            </form>
+                <div class="border rounded p-2" id="rgpdBlankResidentsList" style="max-height:280px;overflow:auto;"></div>
+            </div>
+            <div class="modal-footer border-top-0 gap-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary btn-sm">Descargar ZIP</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="rgpdPaperUploadModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <form method="post" id="rgpdPaperUploadForm" enctype="multipart/form-data" class="modal-content border-0 shadow-lg">
+            <div class="modal-header border-bottom-0 pb-0">
+                <h5 class="modal-title h6 mb-0">Registrar firmas en papel</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body pt-3">
+                <p class="small text-muted mb-3">Vecino: <strong id="rgpdPaperResidentName">—</strong></p>
+                <div id="rgpdPaperRows"></div>
+                <button type="button" class="btn btn-outline-primary btn-sm mt-2" id="rgpdPaperAddRow">
+                    <i class="bi bi-plus-lg"></i> Añadir otra plantilla
+                </button>
+            </div>
+            <div class="modal-footer border-top-0 gap-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-success btn-sm">Guardar firmas</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<template id="rgpdPaperRowTemplate">
+    <div class="rgpd-paper-row border rounded p-2 mb-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-5">
+                <label class="form-label small mb-1">Plantilla</label>
+                <select class="form-select form-select-sm rgpd-paper-template" name="template_id[]" required></select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label small mb-1">PDF firmado</label>
+                <input type="file" class="form-control form-control-sm" name="paper_pdf[]" accept="application/pdf" required>
+            </div>
+            <div class="col-md-1 text-end">
+                <button type="button" class="btn btn-sm btn-outline-danger rgpd-paper-remove" title="Quitar fila">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
         </div>
     </div>
-    <?php endif; ?>
-<?php endforeach; ?>
+</template>
+
 
 <script>
 (function () {
@@ -652,10 +730,23 @@ $sigStatusBadge = static function (string $st): string {
     if (!hash && hasSigFilters) {
         hash = '#rgpd-solicitudes';
     }
-    if (hash) {
-        const btn = document.querySelector('[data-bs-target="' + hash + '"]');
-        if (btn) bootstrap.Tab.getOrCreateInstance(btn).show();
+
+    function showTabFromHash() {
+        let h = window.location.hash;
+        if (!h && hasSigFilters) {
+            h = '#rgpd-solicitudes';
+        }
+        if (!h || typeof bootstrap === 'undefined') {
+            return;
+        }
+        const btn = document.querySelector('[data-bs-target="' + h + '"]');
+        if (btn) {
+            bootstrap.Tab.getOrCreateInstance(btn).show();
+        }
     }
+
+    showTabFromHash();
+    window.addEventListener('load', showTabFromHash);
 
     function initOrAdjustRgpdSolicitudesTable() {
         const table = document.querySelector('#rgpd-solicitudes table[data-datatable]');
@@ -743,6 +834,248 @@ $sigStatusBadge = static function (string $st): string {
         });
         const includePaper = document.getElementById('rgpd_include_paper');
         if (includePaper) includePaper.checked = false;
+    });
+
+    const blankModal = document.getElementById('rgpdBlankDownloadModal');
+    const blankForm = document.getElementById('rgpdBlankDownloadForm');
+    const blankList = document.getElementById('rgpdBlankResidentsList');
+    const blankName = document.getElementById('rgpdBlankTemplateName');
+
+    blankModal?.addEventListener('show.bs.modal', function (event) {
+        const btn = event.relatedTarget;
+        if (!btn || !blankForm || !blankList) return;
+        const tid = btn.getAttribute('data-template-id') || '0';
+        const tname = btn.getAttribute('data-template-name') || '—';
+        let residents = [];
+        try { residents = JSON.parse(btn.getAttribute('data-residents') || '[]'); } catch (e) { residents = []; }
+
+        if (blankName) blankName.textContent = tname;
+        blankForm.action = '<?= $ab ?>/rgpd/comunidades/<?= $cid ?>/plantillas/' + encodeURIComponent(tid) + '/descargar-en-blanco';
+
+        blankList.innerHTML = '';
+        if (!residents.length) {
+            blankList.innerHTML = '<p class="text-muted small mb-0">No hay vecinos pendientes para esta plantilla.</p>';
+            return;
+        }
+        residents.forEach(function (r) {
+            const id = r.id;
+            const label = r.resident_name || ('Vecino ' + id);
+            const div = document.createElement('div');
+            div.className = 'form-check';
+            div.innerHTML =
+                '<input class="form-check-input" type="checkbox" name="resident_ids[]" value="' + id + '" id="rgpd_blank_' + id + '" checked>' +
+                '<label class="form-check-label small" for="rgpd_blank_' + id + '">' + label + '</label>';
+            blankList.appendChild(div);
+        });
+    });
+
+    document.getElementById('rgpdBlankSelectAll')?.addEventListener('click', function () {
+        blankList?.querySelectorAll('input[type=checkbox]').forEach(function (el) { el.checked = true; });
+    });
+    document.getElementById('rgpdBlankSelectNone')?.addEventListener('click', function () {
+        blankList?.querySelectorAll('input[type=checkbox]').forEach(function (el) { el.checked = false; });
+    });
+
+    const paperModal = document.getElementById('rgpdPaperUploadModal');
+    if (paperModal) {
+        paperModal.classList.remove('show');
+        paperModal.style.display = '';
+        paperModal.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('modal-open');
+        document.body.style.removeProperty('padding-right');
+        document.body.style.removeProperty('overflow');
+        document.querySelectorAll('.modal-backdrop').forEach(function (el) { el.remove(); });
+    }
+    const paperForm = document.getElementById('rgpdPaperUploadForm');
+    const paperRows = document.getElementById('rgpdPaperRows');
+    const paperName = document.getElementById('rgpdPaperResidentName');
+    const paperTpl = document.getElementById('rgpdPaperRowTemplate');
+    let paperTemplates = [];
+    let paperTriggerData = null;
+
+    paperForm?.addEventListener('submit', function (e) {
+        const v = validateAllPaperRows();
+        if (!v.ok) {
+            e.preventDefault();
+            alert(v.msg || 'Revise las filas marcadas en rojo.');
+        }
+    });
+
+    function getPaperRowEls(row) {
+        return {
+            sel: row.querySelector('.rgpd-paper-template'),
+            file: row.querySelector('input[name="paper_pdf[]"]'),
+        };
+    }
+
+    function isPaperRowComplete(row) {
+        const { sel, file } = getPaperRowEls(row);
+        return !!(sel && sel.value && file && file.files && file.files.length > 0);
+    }
+
+    function setPaperRowInvalid(row, invalid) {
+        row.classList.toggle('border-danger', invalid);
+        row.classList.toggle('bg-danger-subtle', invalid);
+    }
+
+    function validateAllPaperRows() {
+        const rows = paperRows?.querySelectorAll('.rgpd-paper-row') || [];
+        let ok = true;
+        let msg = '';
+        if (!rows.length) {
+            return { ok: false, msg: 'Añada al menos una plantilla y su PDF.' };
+        }
+        rows.forEach(function (row) {
+            const { sel, file } = getPaperRowEls(row);
+            const hasTpl = !!(sel && sel.value);
+            const hasFile = !!(file && file.files && file.files.length > 0);
+            const rowOk = hasTpl && hasFile;
+            setPaperRowInvalid(row, !rowOk);
+            if (!rowOk) ok = false;
+            if (hasTpl && !hasFile) msg = 'Cada plantilla seleccionada debe tener su PDF.';
+            if (!hasTpl && hasFile) msg = 'Seleccione la plantilla de cada PDF subido.';
+            if (!hasTpl && !hasFile) msg = 'Complete o elimine las filas vacías.';
+        });
+        const ids = [];
+        rows.forEach(function (row) {
+            const v = getPaperRowEls(row).sel?.value;
+            if (v) ids.push(v);
+        });
+        if (ids.length !== new Set(ids).size) {
+            ok = false;
+            msg = 'No puede repetir la misma plantilla.';
+        }
+        return { ok: ok, msg: msg };
+    }
+
+    function updatePaperAddButton() {
+        const btn = document.getElementById('rgpdPaperAddRow');
+        if (!btn || !paperRows) return;
+        const rows = paperRows.querySelectorAll('.rgpd-paper-row');
+        const last = rows[rows.length - 1];
+        const complete = last ? isPaperRowComplete(last) : false;
+        const used = rows.length;
+        const max = paperTemplates.length;
+        btn.disabled = !complete || used >= max;
+        btn.title = !complete
+            ? 'Complete plantilla y PDF de la fila actual'
+            : (used >= max ? 'No quedan más plantillas' : '');
+    }
+
+    function refreshPaperSelects() {
+        updatePaperAddButton();
+        const selected = new Set();
+        paperRows?.querySelectorAll('.rgpd-paper-template').forEach(function (sel) {
+            if (sel.value) selected.add(sel.value);
+        });
+        paperRows?.querySelectorAll('.rgpd-paper-template').forEach(function (sel) {
+            const current = sel.value;
+            sel.innerHTML = '';
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = 'Seleccione plantilla…';
+            placeholder.disabled = true;
+            placeholder.selected = !current;
+            sel.appendChild(placeholder);
+            paperTemplates.forEach(function (t) {
+                const id = String(t.id);
+                if (id !== current && selected.has(id)) return;
+                const opt = document.createElement('option');
+                opt.value = id;
+                opt.textContent = t.name + (t.state === 'pending' ? ' (pendiente online)' : '');
+                if (id === current) opt.selected = true;
+                sel.appendChild(opt);
+            });
+        });
+        updatePaperAddButton();
+    }
+
+    function addPaperRow() {
+        if (!paperTpl || !paperRows) return;
+        const rows = paperRows.querySelectorAll('.rgpd-paper-row');
+        if (rows.length && !isPaperRowComplete(rows[rows.length - 1])) {
+            setPaperRowInvalid(rows[rows.length - 1], true);
+            return;
+        }
+        if (rows.length >= paperTemplates.length) return;
+        paperRows.appendChild(paperTpl.content.cloneNode(true));
+        refreshPaperSelects();
+        updatePaperAddButton();
+    }
+
+
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('button[data-bs-target="#rgpdPaperUploadModal"]');
+        if (!btn) return;
+        paperTriggerData = {
+            rid: btn.getAttribute('data-resident-id') || '0',
+            name: btn.getAttribute('data-resident-name') || '—',
+            templatesJson: btn.getAttribute('data-paper-templates') || '[]',
+        };
+    }, true);
+
+
+    paperModal?.addEventListener('show.bs.modal', function () {
+        const data = paperTriggerData;
+        if (!data || !paperForm || !paperRows) return;
+
+        if (paperName) paperName.textContent = data.name;
+        paperForm.action = '<?= $ab ?>/rgpd/comunidades/<?= $cid ?>/vecinos/' + encodeURIComponent(data.rid) + '/firmas-papel';
+
+        try {
+            paperTemplates = JSON.parse(data.templatesJson);
+        } catch (e) {
+            paperTemplates = [];
+        }
+
+        paperRows.innerHTML = '';
+
+        const addBtn = document.getElementById('rgpdPaperAddRow');
+        const submitBtn = paperForm.querySelector('button[type="submit"]');
+
+        if (!paperTemplates.length) {
+            paperRows.innerHTML = '<p class="text-muted small mb-0">No hay más plantillas pendientes de registrar en papel para este vecino.</p>';
+            if (addBtn) addBtn.style.display = 'none';
+            if (submitBtn) submitBtn.disabled = true;
+            return;
+        }
+
+        if (addBtn) addBtn.style.display = paperTemplates.length > 1 ? '' : 'none';
+        if (submitBtn) submitBtn.disabled = false;
+
+        addPaperRow();
+        updatePaperAddButton();
+    });
+
+    paperModal?.addEventListener('hidden.bs.modal', function () {
+        paperTriggerData = null;
+        paperRows.innerHTML = '';
+        paperTemplates = [];
+        if (paperName) paperName.textContent = '—';
+        const addBtn = document.getElementById('rgpdPaperAddRow');
+        const submitBtn = paperForm?.querySelector('button[type="submit"]');
+        if (addBtn) {
+            addBtn.style.display = '';
+            addBtn.disabled = false;
+        }
+        if (submitBtn) submitBtn.disabled = false;
+    });
+
+    document.getElementById('rgpdPaperAddRow')?.addEventListener('click', addPaperRow);
+    paperRows?.addEventListener('change', function (e) {
+        if (e.target.classList.contains('rgpd-paper-template')) {
+            refreshPaperSelects();
+        } else if (e.target.name === 'paper_pdf[]') {
+            const row = e.target.closest('.rgpd-paper-row');
+            if (row) setPaperRowInvalid(row, false);
+            updatePaperAddButton();
+        }
+    });
+    paperRows?.addEventListener('click', function (e) {
+        const btn = e.target.closest('.rgpd-paper-remove');
+        if (!btn) return;
+        btn.closest('.rgpd-paper-row')?.remove();
+        refreshPaperSelects();
     });
 })();
 </script>

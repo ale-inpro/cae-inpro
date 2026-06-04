@@ -11,6 +11,8 @@ use PDO;
 use App\Services\Rgpd\RgpdSignedPdfService;
 use DateTimeImmutable;
 use App\Services\Rgpd\RgpdPdfMergeService;
+use App\Services\Rgpd\RgpdBlankPdfZipService;
+use App\Services\Rgpd\RgpdTemplateRenderer;
 
 final class RgpdCommunityController extends Controller
 {
@@ -118,7 +120,7 @@ final class RgpdCommunityController extends Controller
 
         $signatures = $pdo->prepare("
             SELECT s.id, s.status, s.created_at, s.signed_at, s.email_sent_at, s.resent_count,
-                s.template_id,
+                s.template_id, s.paper_signed_pdf_path,
                 TRIM(CONCAT_WS(' ', r.nombre, r.apellidos)) AS resident_name,
                 t.name AS template_name
             FROM rgpd_signature_requests s
@@ -150,6 +152,23 @@ final class RgpdCommunityController extends Controller
             SELECT id, name FROM rgpd_templates WHERE is_active = TRUE ORDER BY name
         ")->fetchAll(PDO::FETCH_ASSOC);
 
+        $paperEligibleByResident = [];
+        foreach ($residentRows as $row) {
+            $rid = (int) ($row['id'] ?? 0);
+            if ($rid <= 0) {
+                continue;
+            }
+            $paperEligibleByResident[$rid] = RgpdTemplateCompliance::paperUploadableTemplates($pdo, $rid);
+        }
+
+        $blankResidentsByTemplate = [];
+        foreach ($documentSummaries as $doc) {
+            $tid = (int) ($doc['template_id'] ?? 0);
+            if ($tid > 0) {
+                $blankResidentsByTemplate[$tid] = RgpdTemplateCompliance::blankDownloadableResidents($pdo, $id, $tid);
+            }
+        }
+
         $this->render('rgpd.communities.show', [
             'title' => 'RGPD · ' . ($community['name'] ?? 'Comunidad'),
             'area' => $this->currentArea(),
@@ -169,6 +188,8 @@ final class RgpdCommunityController extends Controller
                 'to' => $sigTo,
             ],
             'templatesForFilter' => $templatesForFilter,
+            'paperEligibleByResident' => $paperEligibleByResident,
+            'blankResidentsByTemplate' => $blankResidentsByTemplate,
         ]);
     }
 
@@ -503,5 +524,259 @@ final class RgpdCommunityController extends Controller
                 }
             }
         }
+    }
+
+    /** @param array<string, string> $params */
+    public function downloadBlankTemplatesZip(array $params = []): void
+    {
+        $this->assertAreaAccess();
+        $pdo = $this->rgpdPdo();
+        [$role, $mcId] = $this->rgpdAccessContext();
+
+        $communityId = (int) ($params['id'] ?? 0);
+        $templateId = (int) ($params['templateId'] ?? 0);
+
+        $community = RgpdAccess::assertCommunity($pdo, $communityId, $role, $mcId);
+        if ($community === null) {
+            http_response_code(404);
+            $this->respond('Comunidad no encontrada');
+            return;
+        }
+
+        $tplStmt = $pdo->prepare('SELECT id, name, body_html FROM rgpd_templates WHERE id = :id AND is_active = TRUE LIMIT 1');
+        $tplStmt->execute(['id' => $templateId]);
+        $template = $tplStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$template) {
+            $this->flash('Plantilla no válida.', 'warning', 'RGPD');
+            header('Location: ' . $this->areaBaseUrl() . '/rgpd/comunidades/' . $communityId . '#rgpd-documentos');
+            exit;
+        }
+
+        $residentIds = array_map('intval', (array) ($_POST['resident_ids'] ?? []));
+        $residentIds = array_values(array_unique(array_filter($residentIds, static fn(int $v): bool => $v > 0)));
+        if ($residentIds === []) {
+            $this->flash('Seleccione al menos un vecino.', 'warning', 'RGPD');
+            header('Location: ' . $this->areaBaseUrl() . '/rgpd/comunidades/' . $communityId . '#rgpd-documentos');
+            exit;
+        }
+
+        $in = implode(',', array_fill(0, count($residentIds), '?'));
+        $resStmt = $pdo->prepare("
+            SELECT * FROM community_residents
+            WHERE community_id = ? AND is_active = TRUE AND id IN ({$in})
+            ORDER BY nombre, apellidos
+        ");
+        $resStmt->execute(array_merge([$communityId], $residentIds));
+        $residents = $resStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $files = [];
+        $communityName = (string) ($community['name'] ?? 'Comunidad');
+        $tplName = (string) ($template['name'] ?? 'Plantilla');
+        $tplSlug = RgpdBlankPdfZipService::slug($tplName);
+        $commSlug = RgpdBlankPdfZipService::slug($communityName);
+
+        foreach ($residents as $resident) {
+            $rid = (int) ($resident['id'] ?? 0);
+            if (RgpdTemplateCompliance::residentTemplateState($pdo, $rid, $templateId) === RgpdTemplateCompliance::STATE_SIGNED) {
+                continue;
+            }
+
+            $html = RgpdTemplateRenderer::render((string) ($template['body_html'] ?? ''), $community, $resident);
+            $pdf = RgpdBlankPdfZipService::renderBlankPdf(
+                $communityName,
+                app_resident_name($resident),
+                $tplName,
+                $html
+            );
+
+            $resSlug = RgpdBlankPdfZipService::slug(app_resident_name($resident));
+            $files[] = [
+                'filename' => "RGPD_{$commSlug}_{$tplSlug}_{$resSlug}.pdf",
+                'pdf_bytes' => $pdf,
+            ];
+        }
+
+        if ($files === []) {
+            $this->flash('Ningún vecino seleccionado puede recibir esta plantilla (ya firmada).', 'info', 'RGPD');
+            header('Location: ' . $this->areaBaseUrl() . '/rgpd/comunidades/' . $communityId . '#rgpd-documentos');
+            exit;
+        }
+
+        $zipBytes = RgpdBlankPdfZipService::buildZip($files);
+        $zipName = 'RGPD_plantillas_' . $commSlug . '_' . $tplSlug . '_' . date('Ymd_His') . '.zip';
+
+        header('Content-Type: application/zip');
+        header('Content-Disposition: attachment; filename="' . $zipName . '"');
+        header('Content-Length: ' . strlen($zipBytes));
+        echo $zipBytes;
+        exit;
+    }
+
+    /** @param array<string, string> $params */
+    public function uploadResidentPaperSignatures(array $params = []): void
+    {
+        $this->assertAreaAccess();
+        $pdo = $this->rgpdPdo();
+        [$role, $mcId] = $this->rgpdAccessContext();
+
+        $communityId = (int) ($params['id'] ?? 0);
+        $residentId = (int) ($params['residentId'] ?? 0);
+        $userId = (int) ($_SESSION['user']['id'] ?? 0);
+
+        $community = RgpdAccess::assertCommunity($pdo, $communityId, $role, $mcId);
+        if ($community === null) {
+            http_response_code(404);
+            $this->respond('Comunidad no encontrada');
+            return;
+        }
+
+        $resStmt = $pdo->prepare('SELECT * FROM community_residents WHERE id = :rid AND community_id = :cid AND is_active = TRUE LIMIT 1');
+        $resStmt->execute(['rid' => $residentId, 'cid' => $communityId]);
+        $resident = $resStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$resident) {
+            $this->flash('Vecino no válido.', 'warning', 'RGPD');
+            header('Location: ' . $this->areaBaseUrl() . '/rgpd/comunidades/' . $communityId . '#rgpd-vecinos');
+            exit;
+        }
+
+        $templateIdsRaw = (array) ($_POST['template_id'] ?? []);
+        $files = $_FILES['paper_pdf'] ?? null;
+        if (!$files) {
+            $this->flash('Añada al menos una plantilla y su PDF.', 'warning', 'RGPD');
+            header('Location: ' . $this->areaBaseUrl() . '/rgpd/comunidades/' . $communityId . '#rgpd-vecinos');
+            exit;
+        }
+
+        $names = (array) ($files['name'] ?? []);
+        $tmps = (array) ($files['tmp_name'] ?? []);
+        $errors = (array) ($files['error'] ?? []);
+        $rowCount = max(count($templateIdsRaw), count($names));
+
+        $pairs = [];
+        for ($i = 0; $i < $rowCount; $i++) {
+            $tid = (int) ($templateIdsRaw[$i] ?? 0);
+            $hasFile = isset($names[$i]) && (string) $names[$i] !== '';
+            if ($tid <= 0 && !$hasFile) {
+                continue; // fila vacía: ignorar
+            }
+            if ($tid <= 0 || !$hasFile) {
+                $this->flash('Complete plantilla y PDF en cada fila, o elimine las filas vacías.', 'warning', 'RGPD');
+                header('Location: ' . $this->areaBaseUrl() . '/rgpd/comunidades/' . $communityId . '#rgpd-vecinos');
+                exit;
+            }
+            $pairs[] = ['template_id' => $tid, 'index' => $i];
+        }
+
+        if ($pairs === []) {
+            $this->flash('Añada al menos una plantilla y su PDF.', 'warning', 'RGPD');
+            header('Location: ' . $this->areaBaseUrl() . '/rgpd/comunidades/' . $communityId . '#rgpd-vecinos');
+            exit;
+        }
+
+        $templateIds = array_column($pairs, 'template_id');
+        if (count($templateIds) !== count(array_unique($templateIds))) {
+            $this->flash('No puede repetir la misma plantilla en un mismo envío.', 'warning', 'RGPD');
+            header('Location: ' . $this->areaBaseUrl() . '/rgpd/comunidades/' . $communityId . '#rgpd-vecinos');
+            exit;
+        }
+
+        $uploadDir = dirname(__DIR__, 4) . '/public/uploads/rgpd-paper/' . $communityId;
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0775, true);
+        }
+
+        $pdo->beginTransaction();
+        try {
+            $saved = 0;
+            foreach ($pairs as $pair) {
+                $templateId = (int) $pair['template_id'];
+                $idx = (int) $pair['index'];
+
+                if (RgpdTemplateCompliance::residentTemplateState($pdo, $residentId, $templateId) === RgpdTemplateCompliance::STATE_SIGNED) {
+                    continue;
+                }
+
+                if ((int) ($errors[$idx] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                    throw new \RuntimeException('Archivo inválido en la fila ' . ($idx + 1));
+                }
+
+                $original = (string) ($names[$idx] ?? '');
+                if (strtolower(pathinfo($original, PATHINFO_EXTENSION)) !== 'pdf') {
+                    throw new \RuntimeException('Solo se admiten PDF.');
+                }
+
+                $tplStmt = $pdo->prepare('SELECT id, body_html FROM rgpd_templates WHERE id = :id AND is_active = TRUE LIMIT 1');
+                $tplStmt->execute(['id' => $templateId]);
+                $tpl = $tplStmt->fetch(PDO::FETCH_ASSOC);
+                if (!$tpl) {
+                    throw new \RuntimeException('Plantilla no válida.');
+                }
+
+                $safeName = date('Ymd_His') . '_' . $residentId . '_' . $templateId . '_' . bin2hex(random_bytes(4)) . '.pdf';
+                $dest = $uploadDir . '/' . $safeName;
+                if (!move_uploaded_file((string) ($tmps[$idx] ?? ''), $dest)) {
+                    throw new \RuntimeException('No se pudo guardar el PDF.');
+                }
+
+                $storagePath = '/uploads/rgpd-paper/' . $communityId . '/' . $safeName;
+                $renderedHtml = RgpdTemplateRenderer::render((string) ($tpl['body_html'] ?? ''), $community, $resident);
+
+                $pendingStmt = $pdo->prepare("
+                    SELECT id FROM rgpd_signature_requests
+                    WHERE resident_id = :rid AND template_id = :tid AND status = 'pending'
+                    ORDER BY id DESC LIMIT 1
+                ");
+                $pendingStmt->execute(['rid' => $residentId, 'tid' => $templateId]);
+                $pendingId = (int) ($pendingStmt->fetchColumn() ?: 0);
+
+                if ($pendingId > 0) {
+                    $pdo->prepare("
+                        UPDATE rgpd_signature_requests
+                        SET status = 'paper',
+                            signed_on_paper = TRUE,
+                            paper_signed_pdf_path = :path,
+                            rendered_html = :html,
+                            paper_recorded_by_user_id = :uid,
+                            signed_at = NOW(),
+                            updated_at = NOW()
+                        WHERE id = :id
+                    ")->execute([
+                        'id' => $pendingId,
+                        'path' => $storagePath,
+                        'html' => $renderedHtml,
+                        'uid' => $userId > 0 ? $userId : null,
+                    ]);
+                } else {
+                    $token = bin2hex(random_bytes(32));
+                    $pdo->prepare("
+                        INSERT INTO rgpd_signature_requests
+                        (campaign_id, community_id, resident_id, template_id, token, status, rendered_html,
+                            signed_on_paper, paper_signed_pdf_path, paper_recorded_by_user_id, signed_at, created_at, updated_at)
+                        VALUES (NULL, :cid, :rid, :tid, :token, 'paper', :html,
+                                TRUE, :path, :uid, NOW(), NOW(), NOW())
+                    ")->execute([
+                        'cid' => $communityId,
+                        'rid' => $residentId,
+                        'tid' => $templateId,
+                        'token' => $token,
+                        'html' => $renderedHtml,
+                        'path' => $storagePath,
+                        'uid' => $userId > 0 ? $userId : null,
+                    ]);
+                }
+                $saved++;
+            }
+
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            $this->flash($e->getMessage(), 'danger', 'RGPD');
+            header('Location: ' . $this->areaBaseUrl() . '/rgpd/comunidades/' . $communityId . '#rgpd-vecinos');
+            exit;
+        }
+
+        $this->flash($saved > 0 ? 'Firma(s) en papel registrada(s).' : 'No se registró ninguna firma.', $saved > 0 ? 'success' : 'info', 'RGPD');
+        header('Location: ' . $this->areaBaseUrl() . '/rgpd/comunidades/' . $communityId . '#rgpd-vecinos');
+        exit;
     }
 }

@@ -165,8 +165,10 @@ return [
         ['method' => 'GET',  'path' => '/gestor/rgpd/envio-masivo', 'action' => [RgpdMassSendController::class, 'wizard']],
         ['method' => 'POST', 'path' => '/gestor/rgpd/envio-masivo', 'action' => [RgpdMassSendController::class, 'launch']],
         ['method' => 'POST', 'path' => '/gestor/rgpd/firmas/{id}/reenviar', 'action' => [RgpdMassSendController::class, 'resend']],
-        ['method' => 'POST', 'path' => '/gestor/rgpd/firmas/{id}/papel', 'action' => [RgpdMassSendController::class, 'markPaper']],
 
+        ['method' => 'POST', 'path' => '/gestor/rgpd/comunidades/{id}/plantillas/{templateId}/descargar-en-blanco', 'action' => [RgpdCommunityController::class, 'downloadBlankTemplatesZip']],
+        ['method' => 'POST', 'path' => '/gestor/rgpd/comunidades/{id}/vecinos/{residentId}/firmas-papel', 'action' => [RgpdCommunityController::class, 'uploadResidentPaperSignatures']],
+        ['method' => 'POST', 'path' => '/gestor/rgpd/plantillas/{id}/descargar-en-blanco', 'action' => [RgpdTemplateController::class, 'downloadBlankFromTemplateIndex']],
         // Firma pública (sin login)
         ['method' => 'GET',  'path' => '/rgpd/firmar/{token}', 'action' => [RgpdSignController::class, 'show']],
         ['method' => 'POST', 'path' => '/rgpd/firmar/{token}', 'action' => [RgpdSignController::class, 'submit']],
@@ -185,6 +187,10 @@ return [
         ['method' => 'POST', 'path' => '/admin/cae/documentos/{documentId}/verify-aeat', 'action' => [CaeController::class, 'verifyAeatDocument']],
 
         ['method' => 'GET', 'path' => '/admin/comunidades/{id}/sync', 'action' => [CommunityController::class, 'syncState']],
+
+        ['method' => 'POST', 'path' => '/admin/rgpd/comunidades/{id}/plantillas/{templateId}/descargar-en-blanco', 'action' => [RgpdCommunityController::class, 'downloadBlankTemplatesZip']],
+        ['method' => 'POST', 'path' => '/admin/rgpd/comunidades/{id}/vecinos/{residentId}/firmas-papel', 'action' => [RgpdCommunityController::class, 'uploadResidentPaperSignatures']],
+        ['method' => 'POST', 'path' => '/admin/rgpd/plantillas/{id}/descargar-en-blanco', 'action' => [RgpdTemplateController::class, 'downloadBlankFromTemplateIndex']],
 
         ['method' => 'POST', 'path' => '/admin/rgpd/comunidades/{id}/vecinos/{residentId}/documentos-firmados', 'action' => [RgpdCommunityController::class, 'downloadResidentSignedDocuments']],
         ['method' => 'POST', 'path' => '/gestor/rgpd/comunidades/{id}/vecinos/{residentId}/documentos-firmados', 'action' => [RgpdCommunityController::class, 'downloadResidentSignedDocuments']],

@@ -490,4 +490,64 @@ final class RgpdTemplateCompliance
 
         return $badges;
     }
+
+        /**
+     * Plantillas que el vecino aún puede firmar en papel (no tiene signed/paper vigente).
+     *
+     * @return list<array{id: int, name: string, state: string}>
+     */
+    public static function paperUploadableTemplates(PDO $pdo, int $residentId): array
+    {
+        $tplStmt = $pdo->query("
+            SELECT id, name FROM rgpd_templates WHERE is_active = TRUE ORDER BY name
+        ");
+        $out = [];
+        foreach ($tplStmt->fetchAll(PDO::FETCH_ASSOC) as $tpl) {
+            $tid = (int) ($tpl['id'] ?? 0);
+            if ($tid <= 0) {
+                continue;
+            }
+            $state = self::residentTemplateState($pdo, $residentId, $tid);
+            if ($state === self::STATE_SIGNED) {
+                continue;
+            }
+            $out[] = [
+                'id' => $tid,
+                'name' => (string) ($tpl['name'] ?? ''),
+                'state' => $state,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Vecinos activos de la comunidad sin firma vigente (signed/paper) para esa plantilla.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function blankDownloadableResidents(PDO $pdo, int $communityId, int $templateId): array
+    {
+        $stateSql = self::complianceStateSql('s', 'r');
+        $stmt = $pdo->prepare("
+            SELECT r.id,
+                TRIM(CONCAT_WS(' ', r.nombre, r.apellidos)) AS resident_name,
+                r.email,
+                {$stateSql} AS compliance_state
+            FROM community_residents r
+            WHERE r.community_id = :cid AND r.is_active = TRUE
+            ORDER BY r.nombre, r.apellidos
+        ");
+        $stmt->execute(['cid' => $communityId, 'tid' => $templateId]);
+
+        $out = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            if ((string) ($row['compliance_state'] ?? self::STATE_NONE) === self::STATE_SIGNED) {
+                continue;
+            }
+            $out[] = $row;
+        }
+
+        return $out;
+    }
 }
